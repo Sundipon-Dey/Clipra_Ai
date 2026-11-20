@@ -1,0 +1,16 @@
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+.env
+*.mp4
+*.mkv
+*.mov
+*.sqlite
+*.sqlite3
+*.db
+dist/
+projects/
+temp/
+.pytest_cache/
+models/faster-whisper/
