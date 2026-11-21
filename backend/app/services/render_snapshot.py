@@ -49,7 +49,7 @@ def capture(clip_id: str, caption_track_id: str | None = None) -> dict | None:
         "caption_track": track,
     }
     if clip["layout_type"] == "original":
-        # Keep schema-v7 Original Layout snapshots byte-for-byte compatible so their saved previews remain approvable after migration.
+        # Keep the historical Original Layout snapshot shape stable across migrations.
         clip_snapshot.pop("layout_type", None)
         clip_snapshot.pop("split_layout", None)
     else:

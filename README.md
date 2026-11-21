@@ -2,7 +2,7 @@
 
 CLIPRA.AI is a local-first Windows application for organizing, previewing, and finding highlight moments in authorized video footage. It supports local projects, multiple video imports, real FFprobe metadata, SQLite persistence, range-based playback, separate preview copies, explicit Gemini video analysis, and editable draft clips with vertical framing.
 
-Stage 2 suggestions remain recommendations until a user turns one into an editable draft clip. Stage 4 adds optional, local faster-whisper transcription and editable caption tracks. Stage 5 adds an explicit rendered preview, separate approval, and immutable versioned MP4 exports.
+Stage 2 suggestions remain recommendations until a user turns one into an editable draft clip. Stage 4 adds optional, local faster-whisper transcription and editable caption tracks. Stage 5 renders each approved clip once as a versioned 1080 x 1920 H.264 MP4.
 
 ## Requirements
 
@@ -101,7 +101,7 @@ Open `http://127.0.0.1:5173`. Stop each server with `Ctrl+C`; then run `Pop-Loca
 7. Choose **Edit as clip** on a suggestion, or **New clip** on a video to create a manual draft. In the editor, set exact in/out times, seek the source, compare a responsive 9:16 preview, choose Smart Crop, Fit / Original, Blurred Background, or Manual Crop, then save. The editor and all manual controls work without Gemini.
 8. Open **Captions & subtitles** in the clip editor. The hardware card recommends a local faster-whisper model. No transcription model is downloaded automatically: choose **Download model** explicitly, then choose **Transcribe clip locally**. The audio is extracted only to managed temporary storage and deleted after the local transcription completes or fails.
 9. Choose one of seven render-compatible presets, select Phrase or One word text display, review phrase grouping and word timing, edit words, drag the caption inside the 9:16 preview, and use the safe-zone guides. One word mode shows only the word at its saved timing. Caption styling and display mode are persisted as draft data only; no final video is rendered in Stage 4.
-10. In the clip editor, choose **Split-Screen Streamer + Gameplay** to stack a streamer section above gameplay. Choose Same Video, a PNG/JPG/WebP custom image, or a solid color for the top section. Select Top or Bottom controls to change each section’s fit/crop, zoom, and position independently. Drag content inside a pane to reposition it, or drag the divider to resize the sections. Save the draft, render a Stage 5 preview, review it, and explicitly approve the export.
+10. In the clip editor, choose **Split-Screen Streamer + Gameplay** to stack a streamer section above gameplay. Choose Same Video, a PNG/JPG/WebP custom image, or a solid color for the top section. Select Top or Bottom controls to change each section's fit/crop, zoom, and position independently. Drag content inside a pane to reposition it, or drag the divider to resize the sections. Save the draft, then click **Export** once to approve and render a versioned output.
 
 Smart Crop recommendations are optional. Before each request, the user must check an explicit consent box. CLIPRA extracts three small still frames from the selected clip locally and sends those images—not necessarily the full video—to Google through the official GenAI SDK. The request may use API quota or incur charges depending on the Google AI Studio project and current terms. No request is made if consent is declined. Request status and results are stored locally; duplicate active/completed requests are not repeated unless explicitly retried after a failure. Temporary local frame files are removed after processing. Original source files remain unchanged.
 
@@ -125,10 +125,10 @@ temp/uploads/                     # transient upload staging
 temp/framing/                     # transient, consented still-frame extraction
 temp/transcription/               # transient, local clip-audio extraction
 models/faster-whisper/            # explicitly downloaded local model snapshots
-projects/<project-id>/previews/clips/<clip-id>/ # rendered Stage 5 review previews
+
 projects/<project-id>/exports/<clip-id>/         # independent V1, V2, ... MP4 outputs
 projects/<project-id>/layout-images/             # validated split-layout still images
-temp/rendering/                    # transient ASS caption scripts and partial MP4 files
+temp/rendering/                    # transient Chromium caption frames and partial MP4 files
 ```
 
 SQLite schema version 8 contains:
@@ -183,14 +183,12 @@ Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs` w
 | GET, PATCH | `/api/caption-tracks/{track_id}` | Retrieve/update preset, render-compatible style, position, safe zone, and grouping. |
 | POST | `/api/caption-tracks/{track_id}/reflow` | Re-group persisted word timings into readable phrases. |
 | PATCH | `/api/caption-segments/{segment_id}`, `/api/caption-words/{word_id}` | Edit persisted phrase or word content/timing. |
-| POST | `/api/clips/{clip_id}/previews` | Render a 9:16 review file from the saved clip and current captions; optionally pass `{ "caption_track_id": "..." }` for a specific selected track. |
-| GET | `/api/clips/{clip_id}/render-jobs` | Read preview and export history; indicates whether a completed preview still matches current edits. |
+| GET | `/api/clips/{clip_id}/render-jobs` | Read immutable export version history. |
 | GET | `/api/render-jobs/{job_id}` | Inspect render state and progress. |
-| POST | `/api/render-jobs/{preview_id}/approve-export` | Explicitly approve a current, completed preview and queue an independent versioned MP4 export. |
-| GET, HEAD | `/api/render-jobs/{job_id}/stream` | Play completed preview or export with HTTP byte-range seeking. |
+| GET, HEAD | `/api/render-jobs/{job_id}/stream` | Play completed exports with HTTP byte-range seeking. |
 | GET | `/api/render-jobs/{job_id}/download` | Download a completed export MP4. |
 
-Stage 5 keeps the output profile fixed at 9:16 (1080 ? 1920). Preview and export use the same framing, crop, blur, and FFmpeg composition pipeline. Captions are drawn by the same Chromium engine and `CaptionOverlay` component used in the editor, then composited as transparent frames, so browser fonts, CSS text size, shadows, line spacing, positioning, highlighting, and animations are reused instead of approximated in a subtitle format. Preview encoding uses a faster preset and lower quality, but uses the same caption renderer and frame timing. Rendering captions requires Node.js plus Microsoft Edge or Google Chrome installed; CLIPRA does not download a browser binary. Approval is rejected if the saved clip or caption configuration changed after the preview. Export approval creates immutable V1, V2, and later versions; editing resumes on the same draft and never overwrites an earlier output. Source media and completed exports are not automatically deleted during normal editing or rendering. This workflow handles one clip at a time.
+Stage 5 exports one clip at a time at 9:16 (1080 x 1920). Clicking **Export** is the explicit approval and starts the only render pass. The renderer uses the current saved framing and caption settings, including Chromium-rendered caption frames from the editor's `CaptionOverlay` CSS, with FFmpeg for video composition. Final exports use H.264 CRF 18 with the medium preset and AAC at 160 kb/s. Each export is an immutable V1, V2, and later version; editing resumes on the same draft and never overwrites an earlier output. Source media and completed exports are not automatically deleted. Existing Stage 5 preview files are retained locally but are not generated or shown by the current workflow. Imported-media playback compatibility previews remain separate.
 
 The split-screen add-on keeps the same output profile and Stage 5 approval/version behavior. A single source video branches into synchronized top and bottom filters; only its original audio stream is mapped. A custom image is looped for the top, or a solid color can fill it, while the source clip supplies the bottom and audio. Captions use the editor's Chromium component and are composited after the sections are stacked; preset colors, shadows, text sizing, word highlighting, and animations use the same CSS as the editor. Each section's framing, zoom, and position settings are independent. Images are limited by `CLIPRA_MAX_LAYOUT_IMAGE_BYTES` (25 MiB by default), an 8192-pixel maximum side, and a 40-megapixel maximum. Replacing an image reference does not delete its managed file.
 
@@ -227,7 +225,7 @@ Backend tests generate short synthetic videos and images with FFmpeg locally. Th
 - Stage 1: local projects, multi-file import, FFprobe metadata, SQLite persistence, playback, and compatible preview copies.
 - Stage 2: Gemini video analysis and validated timestamped recommendations (implemented; live video analysis was not used for verification).
 - Stage 3: draft clip editing and optional focal-point framing recommendations (implemented; approval and export are not included).
-- Stage 4: local faster-whisper transcription and editable caption drafts (implemented; Stage 5 renders captions with the editor's Chromium component).
-- Stage 5: rendered preview, explicit approval, immutable versioned exports, playback/download, and editing after export (implemented; visual matching still requires manual checks on the target Windows system).
-- Split-Screen Streamer + Gameplay add-on after Stage 5: optional vertical same-video or custom-image composition integrated with Stage 5 preview/export (implemented; no face detection or batch workflow).
+- Stage 4: local faster-whisper transcription and editable caption drafts (implemented; Stage 5 exports captions with the editor's Chromium component).
+- Stage 5: direct approved export, immutable versioned MP4s, playback/download, and editing after export (implemented; export uses H.264 CRF 18).
+- Split-Screen Streamer + Gameplay add-on after Stage 5: optional vertical same-video or custom-image composition integrated with direct Stage 5 exports (implemented; no face detection or batch workflow).
 

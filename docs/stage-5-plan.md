@@ -1,26 +1,26 @@
-# CLIPRA.AI Stage 5: Preview, Approval, and Export
+# CLIPRA.AI Stage 5: Direct Export
 
 ## Approved scope
 
-Stage 5 completes one clip at a time from saved draft through rendered review, explicit approval, and versioned MP4 export. The default and only Stage 5 output profile is 9:16 at 1080 × 1920. Existing draft clips and captions remain editable after every export.
+Stage 5 exports one edited clip at a time from its saved draft. The output profile is 9:16 at 1080 × 1920. The user explicitly approves by clicking **Export**. Each export is an immutable, versioned MP4; the draft stays editable after export.
 
 ## Implementation decisions
 
-- A render snapshot captures source identity, clip boundaries, framing settings and focal points, and the current boundary-valid caption track. Preview and export use the same FFmpeg composition pipeline and Chromium-rendered `CaptionOverlay` caption frames. Preview may encode faster and at lower quality; it retains the export dimensions, crop, timing, browser CSS, style, and effects.
-- A preview is eligible for approval only while the current persisted edit snapshot has the same SHA-256 configuration hash. Editing after preview makes it stale; export approval requires a newly rendered current preview.
-- Approval is a separate explicit action. It creates an immutable export job from the reviewed preview snapshot. Export files use unique destinations and monotonically numbered V1, V2, … versions. Editing never changes an existing export.
-- Completed previews and exports are managed workspace files, streamed with byte ranges. Exports support browser playback and download. The UI offers Reopen in Editor and export history.
-- Source videos are read-only inputs. Normal editing, rendering, and exporting never delete originals or completed exports. Jobs survive process restarts: queued jobs resume, while processing jobs become interrupted and are not silently rerun.
-- This is a single-clip flow. There is no batch processing or aspect-ratio selector.
+- The export request captures source identity, clip boundaries, framing, focal points, and the current boundary-valid caption track into one immutable render snapshot.
+- Export uses the shared FFmpeg composition/framing pipeline and captions rendered by Chromium with the editor's `CaptionOverlay` component and CSS. There is no separate rendered preview pass.
+- Approved exports use H.264 CRF 18 with the medium preset and AAC audio at 160 kb/s. Output remains 1080 × 1920.
+- Each approved export receives a monotonically numbered V1, V2, and later version and a unique destination. Editing cannot modify an earlier export.
+- Export history supports playback, download, and Reopen in Editor. Source videos and completed exports are never automatically deleted during normal editing or rendering.
+- The workflow is single-clip only. There is no batch processing or aspect-ratio selector.
 
-## Verification plan
+## Verification
 
-- Exercise the additive SQLite schema migration, job persistence, immutable snapshots, stale-preview rejection, approvals, V1/V2 history, range streaming, and source/export preservation with synthetic FFmpeg fixtures.
-- Exercise the frontend workflow states and run all existing frontend tests plus the production TypeScript/Vite build.
-- Run the full backend test suite. Perform manual Windows UI checks for captions/fonts and visual matching because installed fonts, FFmpeg builds, and video decoding vary by machine.
+- Backend tests cover explicit approval, direct immutable exports, version history, playback/download ranges, source preservation, split layouts, and Chromium caption composition using synthetic FFmpeg fixtures.
+- Frontend tests cover the direct export workflow and production TypeScript/Vite builds.
+- Manual Windows checks should compare the editor canvas with a fresh export on the target machine.
 
-## Known constraints
+## Runtime requirements and retained data
 
-- Caption rendering requires Node.js and installed Microsoft Edge or Google Chrome. CLIPRA does not download a browser binary.
-- Stage 5 exports H.264/AAC at 1080 × 1920. The preview uses the same geometry and filters but a faster preset and lower encoding quality.
-- Smart Crop follows saved focal points. Caption appearance and animation use Chromium screenshots with transparent backgrounds, composited by FFmpeg.
+- Caption rendering requires Node.js plus Microsoft Edge or Google Chrome installed. CLIPRA does not download a browser binary.
+- Existing Stage 5 preview files and database rows from older builds are retained locally and hidden from the export workflow; new review previews are not generated.
+- Imported-media compatibility previews remain available for browser playback when the source codec is unsupported. They are separate from Stage 5 clip rendering.

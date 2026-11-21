@@ -297,7 +297,7 @@ export default function ClipEditor({ media, clip: initial, geminiConfigured, mod
 
   return <main className="clip-editor-backdrop clip-editor-page">
     <section className="clip-editor" aria-labelledby="clip-editor-title">
-      <header className="clip-editor-header"><div><p className="eyebrow">DRAFT CLIP WORKSPACE</p><h2 id="clip-editor-title">Edit your clip</h2><span>{media.original_filename} · Draft · source video remains unchanged</span></div><div className="editor-header-actions"><button className="button secondary small" disabled={saving || Boolean(boundaryInputError)} onClick={() => void persist().then((saved) => { if (saved) setRenderWorkflow(true) })}>Preview & export</button><button className="icon-button" onClick={onClose} aria-label="Close editor"><X size={18}/></button></div></header>
+      <header className="clip-editor-header"><div><p className="eyebrow">DRAFT CLIP WORKSPACE</p><h2 id="clip-editor-title">Edit your clip</h2><span>{media.original_filename} · Draft · source video remains unchanged</span></div><div className="editor-header-actions"><button className="button secondary small" disabled={saving || Boolean(boundaryInputError)} onClick={() => void persist().then((saved) => { if (saved) setRenderWorkflow(true) })}>Export clip</button><button className="icon-button" onClick={onClose} aria-label="Close editor"><X size={18}/></button></div></header>
       <div className="clip-editor-grid">
         <section className="clip-controls-column clip-controls-left" aria-label="Clip settings" data-layout-type={clip.layout_type}>
           <label className="editor-field">Clip title<input value={clip.title} maxLength={160} onChange={(e) => update({ title: e.target.value })}/></label>

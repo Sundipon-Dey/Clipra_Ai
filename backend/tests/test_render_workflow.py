@@ -22,7 +22,15 @@ def _import_video(client, tmp_path: Path):
     return response.json()["imported"][0]
 
 
-def test_caption_preview_uses_editor_chromium_overlay_through_ffmpeg(client, tmp_path):
+def test_caption_export_uses_editor_chromium_overlay_and_crf18_through_ffmpeg(client, tmp_path, monkeypatch):
+    from app.services import render_pipeline
+
+    commands = []
+    original_popen = render_pipeline.subprocess.Popen
+    def record_command(command, *args, **kwargs):
+        commands.append(command)
+        return original_popen(command, *args, **kwargs)
+    monkeypatch.setattr(render_pipeline.subprocess, "Popen", record_command)
     media_json = _import_video(client, tmp_path)
     media = get_media_record(media_json["id"])
     style = {"font_family": "Arial", "font_weight": 700, "font_size": 62, "text_color": "#FFFFFF", "highlight_color": "#00FFFF", "outline_color": "#000000", "outline_width": 8, "shadow_color": "#FF008C", "shadow_offset": 4, "background_color": "#000000", "background_opacity": 0, "alignment": "center", "animation": "pop_karaoke", "animation_ms": 120}
@@ -33,7 +41,8 @@ def test_caption_preview_uses_editor_chromium_overlay_through_ffmpeg(client, tmp
                 "source_relative_path": media["source_relative_path"], "caption_track": track, "focal_points": []}
     output = managed_directory("temp/rendering") / "caption-timing-fixture.mp4"
     assert not output.exists()
-    render(snapshot, output, preview=True, job_id="caption-timing-fixture", progress_callback=lambda _progress: None)
+    render(snapshot, output, job_id="caption-export-fixture", progress_callback=lambda _progress: None)
+    assert any("-crf" in command and command[command.index("-crf") + 1] == "18" and command[command.index("-preset") + 1] == "medium" for command in commands)
     assert output.is_file() and output.stat().st_size > 1000
     probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", str(output)], check=True, capture_output=True, text=True)
     video = json.loads(probe.stdout)["streams"][0]
@@ -45,7 +54,7 @@ def test_caption_preview_uses_editor_chromium_overlay_through_ffmpeg(client, tmp
     ).stdout
     assert len(caption_frame) == 1080 * 500 * 3
     assert any(caption_frame[index] > 180 for index in range(0, len(caption_frame), 3)), "Rendered caption pixels should be visible in the transparent composition area."
-    assert not (managed_directory("temp/rendering") / "caption-timing-fixture-caption-frames").exists(), "Temporary Chromium caption frames should be removed after render."
+    assert not (managed_directory("temp/rendering") / "caption-export-fixture-caption-frames").exists(), "Temporary Chromium caption frames should be removed after render."
     output.unlink(missing_ok=True)
 
 
@@ -76,7 +85,7 @@ def test_original_layout_snapshot_keeps_legacy_shape(client, tmp_path):
     assert "layout_image_relative_path" not in snapshot
 
 
-def test_preview_invalidation_export_version_history_and_source_preservation(client, tmp_path, monkeypatch):
+def test_direct_approved_export_versions_preserve_source_and_prior_exports(client, tmp_path, monkeypatch):
     from app.services.render_queue import _run
 
     media_json = _import_video(client, tmp_path)
@@ -87,38 +96,27 @@ def test_preview_invalidation_export_version_history_and_source_preservation(cli
     source_before = source.read_bytes()
     monkeypatch.setattr("app.api.renders.enqueue", _run)
 
-    preview = client.post(f"/api/clips/{clip['id']}/previews")
-    assert preview.status_code == 202, preview.text
-    first_preview = preview.json()
-    assert first_preview["status"] == "completed"
-    assert first_preview["current"] is True
-    saved_preview = managed_path(get(first_preview["id"])["output_relative_path"], must_exist=True)
-    assert saved_preview.is_file()
-    probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", str(saved_preview)], check=True, capture_output=True, text=True)
+    assert client.post(f"/api/clips/{clip['id']}/previews").status_code == 404
+    assert client.post(f"/api/clips/{clip['id']}/exports", json={"approved": False}).status_code == 400
+    assert client.get(f"/api/clips/{clip['id']}/render-jobs").json() == []
+    first = client.post(f"/api/clips/{clip['id']}/exports", json={"approved": True})
+    assert first.status_code == 202, first.text
+    version_one = first.json()
+    assert version_one["status"] == "completed" and version_one["version_number"] == 1
+    saved_export = managed_path(get(version_one["id"])["output_relative_path"], must_exist=True)
+    assert saved_export.is_file()
+    probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", str(saved_export)], check=True, capture_output=True, text=True)
     video_stream = json.loads(probe.stdout)["streams"][0]
     assert (video_stream["width"], video_stream["height"]) == (1080, 1920)
-
-    changed = client.patch(f"/api/clips/{clip['id']}", json={"fit_background_color": "#334455"})
-    assert changed.status_code == 200
-    assert client.get(f"/api/render-jobs/{first_preview['id']}").json()["current"] is False
-    assert client.post(f"/api/render-jobs/{first_preview['id']}/approve-export", json={"approved": True}).status_code == 409
-
-    second_preview = client.post(f"/api/clips/{clip['id']}/previews").json()
-    assert second_preview["status"] == "completed"
-    approved = client.post(f"/api/render-jobs/{second_preview['id']}/approve-export", json={"approved": True})
-    assert approved.status_code == 202, approved.text
-    version_one = approved.json()
-    assert version_one["status"] == "completed"
-    assert version_one["version_number"] == 1
-    assert version_one["config_hash"] == second_preview["config_hash"]
     first_export = managed_path(get(version_one["id"])["output_relative_path"], must_exist=True)
     bytes_v1 = first_export.read_bytes()
     assert len(bytes_v1) > 1000
 
-    # Editing after V1 and approving another fresh preview preserves V1 as-is.
+    # Editing after V1 and exporting again preserves V1 as-is.
     client.patch(f"/api/clips/{clip['id']}", json={"title": "Versioned again"})
-    third_preview = client.post(f"/api/clips/{clip['id']}/previews").json()
-    version_two = client.post(f"/api/render-jobs/{third_preview['id']}/approve-export", json={"approved": True}).json()
+    version_two_response = client.post(f"/api/clips/{clip['id']}/exports", json={"approved": True})
+    assert version_two_response.status_code == 202, version_two_response.text
+    version_two = version_two_response.json()
     assert version_two["status"] == "completed" and version_two["version_number"] == 2
     assert first_export.read_bytes() == bytes_v1
     assert source.read_bytes() == source_before

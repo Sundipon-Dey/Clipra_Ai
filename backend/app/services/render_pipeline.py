@@ -1,4 +1,4 @@
-"""Shared 9:16 FFmpeg renderer for review previews and approved exports."""
+"""Shared 9:16 FFmpeg renderer for explicitly approved exports."""
 from __future__ import annotations
 
 import json
@@ -198,7 +198,7 @@ def _render_caption_frames(snapshot: dict, job_id: str, fps: float, frame_count:
         timeout_timer.cancel()
 
 
-def render(snapshot: dict, output: Path, *, preview: bool, job_id: str, progress_callback) -> None:
+def render(snapshot: dict, output: Path, *, job_id: str, progress_callback) -> None:
     source = managed_path(snapshot["source_relative_path"], must_exist=True)
     managed_directory("temp/rendering")
     partial = managed_path(f"temp/rendering/{job_id}.partial.mp4")
@@ -229,7 +229,7 @@ def render(snapshot: dict, output: Path, *, preview: bool, job_id: str, progress
         command.extend(["-filter_complex", f"[0:v]{filter_graph(snapshot)}[base];[base][{caption_input}:v]overlay=0:0:format=auto:eof_action=pass[outv]", "-map", "[outv]"])
     else:
         command.extend(["-vf", filter_graph(snapshot), "-map", "0:v:0"])
-    command.extend(["-map", "0:a:0?", "-c:v", "libx264", "-preset", "ultrafast" if preview else "medium", "-crf", "30" if preview else "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(partial)])
+    command.extend(["-map", "0:a:0?", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(partial)])
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", shell=False)
         def read_progress() -> None:

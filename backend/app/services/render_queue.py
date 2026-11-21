@@ -1,9 +1,7 @@
-"""Single local render worker; queued jobs resume, active jobs become interrupted."""
+"""Single local export worker; queued exports resume and active jobs are interrupted."""
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
-
 from app.services.render_pipeline import render
 from app.services.render_store import fail, finish, get, set_progress, start
 from app.services.storage import managed_directory, relative_path
@@ -19,19 +17,18 @@ def _run(job_id: str) -> None:
     job = get(job_id)
     if not job or job["status"] != "queued":
         return
+    if job["kind"] != "export":
+        fail(job_id, "The Stage 5 preview step has been removed; create an export from the clip instead.")
+        return
     start(job_id)
     job = get(job_id)
     try:
         import json
         snapshot = json.loads(job["snapshot_json"])
-        if job["kind"] == "preview":
-            directory = managed_directory(f"projects/{job['project_id']}/previews/clips/{job['clip_id']}")
-            filename = f"preview-{job_id}.mp4"
-        else:
-            directory = managed_directory(f"projects/{job['project_id']}/exports/{job['clip_id']}")
-            filename = f"V{int(job['version_number']):03d}-{job_id}.mp4"
+        directory = managed_directory(f"projects/{job['project_id']}/exports/{job['clip_id']}")
+        filename = f"V{int(job['version_number']):03d}-{job_id}.mp4"
         output = directory / filename
-        render(snapshot, output, preview=job["kind"] == "preview", job_id=job_id,
+        render(snapshot, output, job_id=job_id,
                progress_callback=lambda progress: set_progress(job_id, progress, "encoding"))
         finish(job_id, relative=relative_path(output), size=output.stat().st_size)
     except Exception as exc:

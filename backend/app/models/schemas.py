@@ -198,7 +198,7 @@ class RenderJobOut(BaseModel):
     id: str
     clip_id: str
     project_id: str
-    kind: str
+    kind: Literal["export"]
     status: str
     config_hash: str
     progress: float
@@ -216,9 +216,6 @@ class RenderJobOut(BaseModel):
 
 class RenderApproval(BaseModel):
     approved: bool
-
-
-class RenderPreviewRequest(BaseModel):
     caption_track_id: str | None = None
 
 

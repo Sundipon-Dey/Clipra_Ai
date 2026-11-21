@@ -104,9 +104,9 @@ def test_split_renderer_composes_video_twice_or_custom_image_once_with_single_au
     monkeypatch.setattr("app.api.renders.enqueue", _run)
     split = client.patch(f"/api/clips/{clip['id']}", json={"layout_type": "split_streamer_gameplay", "split_layout": _layout()})
     assert split.status_code == 200
-    same_video_preview = client.post(f"/api/clips/{clip['id']}/previews")
-    assert same_video_preview.status_code == 202, same_video_preview.text
-    same_video_job = get_render(same_video_preview.json()["id"])
+    same_video_export = client.post(f"/api/clips/{clip['id']}/exports", json={"approved": True})
+    assert same_video_export.status_code == 202, same_video_export.text
+    same_video_job = get_render(same_video_export.json()["id"])
     assert same_video_job["status"] == "completed", same_video_job["error_message"]
     same_video_path = managed_path(same_video_job["output_relative_path"], must_exist=True)
 
@@ -114,26 +114,21 @@ def test_split_renderer_composes_video_twice_or_custom_image_once_with_single_au
     config = _layout()
     config["top"].update(source_mode="custom_image", image_asset_id=asset["id"])
     assert client.patch(f"/api/clips/{clip['id']}", json={"split_layout": config}).status_code == 200
-    custom_preview = client.post(f"/api/clips/{clip['id']}/previews")
-    assert custom_preview.status_code == 202, custom_preview.text
-    custom_job = get_render(custom_preview.json()["id"])
-    assert custom_job["status"] == "completed", custom_job["error_message"]
-    custom_path = managed_path(custom_job["output_relative_path"], must_exist=True)
-    assert json.loads(custom_job["snapshot_json"])["layout_image_relative_path"]
-    custom_export_response = client.post(f"/api/render-jobs/{custom_job['id']}/approve-export", json={"approved": True})
+    custom_export_response = client.post(f"/api/clips/{clip['id']}/exports", json={"approved": True})
     assert custom_export_response.status_code == 202, custom_export_response.text
     custom_export = custom_export_response.json()
-    assert custom_export["status"] == "completed" and custom_export["version_number"] == 1
-    assert custom_export["config_hash"] == custom_job["config_hash"]
+    assert custom_export["status"] == "completed" and custom_export["version_number"] == 2
+    custom_job = get_render(custom_export["id"])
+    assert json.loads(custom_job["snapshot_json"])["layout_image_relative_path"]
     export_path = managed_path(get_render(custom_export["id"])["output_relative_path"], must_exist=True)
 
-    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height", "-of", "json", str(custom_path)], check=True, capture_output=True, text=True)
+    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height", "-of", "json", str(export_path)], check=True, capture_output=True, text=True)
     streams = json.loads(probe.stdout)["streams"]
     videos = [stream for stream in streams if stream["codec_type"] == "video"]
     audios = [stream for stream in streams if stream["codec_type"] == "audio"]
     assert len(videos) == 1 and (videos[0]["width"], videos[0]["height"]) == (1080, 1920)
     assert len(audios) == 1
-    assert same_video_path.is_file() and custom_path.is_file() and export_path.is_file()
+    assert same_video_path.is_file() and export_path.is_file()
 
     # Replacing the saved image reference cannot remove the image captured by a completed render snapshot.
     next_asset = _upload_png(client, clip["id"], tmp_path).json()
@@ -153,9 +148,9 @@ def test_solid_color_top_source_is_persisted_and_rendered(client, tmp_path, monk
     updated = client.patch(f"/api/clips/{clip['id']}", json={"layout_type": "split_streamer_gameplay", "split_layout": config})
     assert updated.status_code == 200, updated.text
     assert updated.json()["split_layout"]["top"]["solid_color"] == "#7834c8"
-    preview = client.post(f"/api/clips/{clip['id']}/previews")
-    assert preview.status_code == 202, preview.text
-    job = get_render(preview.json()["id"])
+    export = client.post(f"/api/clips/{clip['id']}/exports", json={"approved": True})
+    assert export.status_code == 202, export.text
+    job = get_render(export.json()["id"])
     assert job["status"] == "completed", job["error_message"]
     rendered = managed_path(job["output_relative_path"], must_exist=True)
     frame = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", "0.2", "-i", str(rendered), "-vf", "crop=2:2:540:300", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], check=True, capture_output=True, timeout=30).stdout

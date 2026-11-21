@@ -1,6 +1,6 @@
 # Split-Screen Streamer + Gameplay
 
-The optional split layout is part of the Stage 5 clip configuration. It renders to the existing 9:16, 1080 × 1920 profile and uses the same saved configuration for review previews and approved exports. The Original Layout remains the default and continues through its existing render filter.
+The optional split layout is part of the Stage 5 clip configuration. It renders to the existing 9:16, 1080 x 1920 profile and uses one direct, explicitly approved export from the current saved configuration. The Original Layout remains the default and continues through its existing render filter.
 
 ## Editor behavior
 
@@ -15,11 +15,11 @@ The optional split layout is part of the Stage 5 clip configuration. It renders 
 
 Images are uploaded through the local API in bounded chunks. The backend checks the allowed PNG, JPEG, or WebP extension and matching file signature, enforces `CLIPRA_MAX_LAYOUT_IMAGE_BYTES` (25 MiB by default), probes dimensions, and decodes a frame before storing the file under `projects/<project-id>/layout-images/`. Each generated path is checked against the configured workspace before it is read.
 
-Images receive immutable generated filenames and are never replaced in place. Changing the clip's selected image does not remove old files. There is no image deletion endpoint; in particular, preview generation, editing, export, and clip cleanup do not automatically remove managed custom images. This keeps assets available to saved layouts and immutable render snapshots/exports. Project data cleanup is an explicit future maintenance operation.
+Images receive immutable generated filenames and are never replaced in place. Changing the clip's selected image does not remove old files. There is no image deletion endpoint; in particular, rendering, editing, export, and clip cleanup do not automatically remove managed custom images. This keeps assets available to saved layouts and immutable render snapshots/exports. Project data cleanup is an explicit future maintenance operation.
 
 ## Rendering and verification
 
-The preview and final export renderer share the same FFmpeg filter graph for split composition, section framing, timing, and the single source audio stream. Captions are rendered by Chromium using the editor's `CaptionOverlay` component and stylesheet, captured with transparency, then composited over the video by FFmpeg. Preview encoding may use a faster preset and lower quality; both render kinds use the same caption browser, fonts, CSS, and frame timing. Any clip edit changes the snapshot hash and makes an earlier preview ineligible for approval.
+Direct exports use the saved FFmpeg filter graph for split composition and section framing. Captions are rendered by Chromium using the editor's `CaptionOverlay` component and stylesheet, captured with transparency, then composited over the video by FFmpeg. The export uses H.264 CRF 18 and AAC audio; no intermediate rendered review video is created.
 
 Caption exports use the same browser component as the editor, so preset font, size, colors, shadows, line layout, word highlighting, animations, and saved position come from the same CSS. Legacy outline width remains ignored because the editor no longer exposes stroke controls.
 
@@ -38,4 +38,4 @@ npm.cmd run build
 Pop-Location
 ```
 
-Manual review should compare a generated Stage 5 preview with its approved export for divider placement, independent crop/fit/zoom/position behavior, caption placement/timing, synchronized same-video sections, custom image persistence, and audio. Automated tests use only generated synthetic media and do not establish visual equivalence on every Windows GPU/display configuration.
+Manual review should compare the editor canvas with a fresh export for divider placement, independent crop/fit/zoom/position behavior, caption placement/timing, synchronized same-video sections, custom image persistence, and audio. Automated tests use only generated synthetic media.
