@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 from pathlib import Path
@@ -12,121 +13,6 @@ from app.core.config import settings
 from app.services.storage import managed_directory, managed_path, relative_path
 
 WIDTH, HEIGHT = 1080, 1920
-
-
-def _ass_color(value: str, opacity: float = 1.0) -> str:
-    value = value if re.fullmatch(r"#[0-9A-Fa-f]{6}", str(value)) else "#FFFFFF"
-    rgb = value[1:]
-    alpha = max(0, min(255, round((1 - opacity) * 255)))
-    return f"&H{alpha:02X}{rgb[4:6]}{rgb[2:4]}{rgb[0:2]}"
-
-
-def _ass_text(value: str) -> str:
-    return value.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}").replace("\n", r"\N").replace("\r", "")
-
-
-def _ass_inline_color(value: str) -> str:
-    return _ass_color(value) + "&"
-
-
-def _ass_pop(duration_ms: int) -> str:
-    return f"\\fscx72\\fscy72\\t(0,{duration_ms},\\fscx128\\fscy128)\\t({duration_ms},{duration_ms + 90},\\fscx106\\fscy106)" if duration_ms > 0 else ""
-
-
-def _ass_caption_pop(duration_ms: int) -> str:
-    return f"\\fscx88\\fscy88\\t(0,{duration_ms},\\fscx100\\fscy100)" if duration_ms > 0 else ""
-
-
-def _phrase_markup(phrase: str, active_word: str | None, base: str, highlight: str, pop_ms: int = 0) -> str:
-    rendered: list[str] = []
-    for token in re.split(r"(\s+)", phrase):
-        if active_word and token.strip() == active_word:
-            pop_tags = _ass_pop(pop_ms)
-            reset_scale = "\\fscx100\\fscy100" if pop_ms > 0 else ""
-            rendered.append("{\\c" + _ass_inline_color(highlight) + pop_tags + "}" + _ass_text(token) + "{\\c" + _ass_inline_color(base) + reset_scale + "}")
-        else:
-            rendered.append(_ass_text(token))
-    return "".join(rendered)
-
-
-def _timestamp(seconds: float) -> str:
-    centis = max(0, round(seconds * 100))
-    hours, rem = divmod(centis, 360000)
-    minutes, rem = divmod(rem, 6000)
-    secs, cs = divmod(rem, 100)
-    return f"{hours}:{minutes:02}:{secs:02}.{cs:02}"
-
-
-def build_ass(track: dict | None, clip: dict) -> str:
-    header = """[Script Info]\nScriptType: v4.00+\nWrapStyle: 2\nScaledBorderAndShadow: yes\nPlayResX: 1080\nPlayResY: 1920\n\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\n"""
-    if not track:
-        return header + "\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n"
-    style = track["style"]
-    align = {"left": 1, "center": 2, "right": 3}[style.get("alignment", "center")] + (3 - 1) * 3
-    bold = -1 if int(style.get("font_weight", 700)) >= 700 else 0
-    # Preview and export share this exact script. Browser dimensions are 360x640.
-    fs = round(max(13, float(style.get("font_size", 62)) / 3.9) * 3)
-    x = round(float(track.get("position_x", .5)) * WIDTH)
-    y = round(float(track.get("position_y", .76)) * HEIGHT)
-    bg = _ass_color(style.get("background_color", "#000000"), float(style.get("background_opacity", 0)))
-    font = re.sub(r"[^\w .-]", "", str(style.get("font_family", "Arial")), flags=re.UNICODE)[:64] or "Arial"
-    border_style = 3 if float(style.get("background_opacity", 0)) > 0 else 1
-    # Keep preset shadows while ignoring legacy outline widths; the editor has no stroke setting.
-    shadow = max(0.0, float(style.get("shadow_offset", 0))) * 1.5
-    style_line = f"Style: Default,{font},{fs},{_ass_color(style.get('text_color','#FFFFFF'))},{_ass_color(style.get('highlight_color','#FFFFFF'))},{_ass_color(style.get('outline_color','#000000'))},{bg},{bold},0,{border_style},0,{shadow:.1f},{align},30,30,0,1"
-    out = header + style_line + "\n\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n"
-    grouping = track.get("grouping") or {}
-    one_word = grouping.get("display_mode") == "one_word"
-    base, hi = _ass_color(style.get("text_color", "#FFFFFF")), _ass_color(style.get("highlight_color", "#FFFFFF"))
-    animation, anim_ms = style.get("animation", "none"), int(style.get("animation_ms", 0))
-    fade = f"\\fad({anim_ms},0)" if animation == "fade" and anim_ms else ""
-    for seg in track.get("segments", []):
-        offset = float(track.get("timing_offset_seconds", 0))
-        words = seg.get("words", [])
-        if one_word and words:
-            for word in words:
-                text = re.sub(r"[.,]", "", word.get("text", "")).strip()
-                if not text:
-                    continue
-                start = max(0, float(word["start_seconds"]) + offset)
-                end = max(start + .01, float(word["end_seconds"]) + offset)
-                # Each word cue starts with the same pop as the editor overlay.
-                word_pop = _ass_pop(anim_ms or 120)
-                tags = f"\\an{align}\\pos({x},{y})\\4c{_ass_inline_color(style.get('shadow_color','#000000'))}" + fade + word_pop
-                out += f"Dialogue: 0,{_timestamp(start)},{_timestamp(end)},Default,,0,0,0,,{{{tags}\\c{_ass_inline_color(hi)}}}{_ass_text(text)}\n"
-            continue
-        start = max(0, float(seg["start_seconds"]) + offset)
-        end = max(start + .01, float(seg["end_seconds"]) + offset)
-        phrase = seg.get("override_text") or seg.get("generated_text") or ""
-        if words:
-            # Render the full phrase for each timed interval, highlighting only the word active at that moment.
-            # This mirrors CaptionOverlay and avoids ASS karaoke color-state differences between renderers.
-            segment_start, segment_end = float(seg["start_seconds"]), float(seg["end_seconds"])
-            boundaries = {segment_start, segment_end}
-            for word in words:
-                word_start, word_end = float(word["start_seconds"]), float(word["end_seconds"])
-                if word_end > segment_start and word_start < segment_end:
-                    boundaries.add(max(segment_start, word_start))
-                    boundaries.add(min(segment_end, word_end))
-            ordered = sorted(boundaries)
-            for interval_start, interval_end in zip(ordered, ordered[1:]):
-                if interval_end - interval_start < .005:
-                    continue
-                midpoint = (interval_start + interval_end) / 2
-                active = next((word for word in words if float(word["start_seconds"]) <= midpoint < float(word["end_seconds"])), None)
-                word_pop_ms = (anim_ms or 120) if active else 0
-                markup = _phrase_markup(phrase, str(active.get("text", "")).strip() if active else None, style.get("text_color", "#FFFFFF"), style.get("highlight_color", "#FFFFFF"), word_pop_ms)
-                interval_fade = fade if abs(interval_start - segment_start) < .001 else ""
-                interval_pop = _ass_caption_pop(anim_ms) if abs(interval_start - segment_start) < .001 and animation in {"pop", "pop_karaoke"} else ""
-                tags = f"\\an{align}\\pos({x},{y})\\4c{_ass_inline_color(style.get('shadow_color','#000000'))}" + interval_fade + interval_pop
-                cue_start = max(0, interval_start + offset)
-                cue_end = max(cue_start + .01, interval_end + offset)
-                out += f"Dialogue: 0,{_timestamp(cue_start)},{_timestamp(cue_end)},Default,,0,0,0,,{{{tags}}}{markup}\n"
-            continue
-        caption_pop = _ass_caption_pop(anim_ms) if animation in {"pop", "pop_karaoke"} else ""
-        tags = f"\\an{align}\\pos({x},{y})\\4c{_ass_inline_color(style.get('shadow_color','#000000'))}" + fade + caption_pop
-        out += f"Dialogue: 0,{_timestamp(start)},{_timestamp(end)},Default,,0,0,0,,{{{tags}}}{_ass_text(phrase)}\n"
-    return out
 
 
 def _focus_expr(snapshot: dict) -> tuple[str, str]:
@@ -150,7 +36,7 @@ def _focus_expr(snapshot: dict) -> tuple[str, str]:
     return expr("x"), expr("y")
 
 
-def filter_graph(snapshot: dict, ass_path: Path) -> str:
+def filter_graph(snapshot: dict) -> str:
     clip = snapshot["clip"]
     mode = clip["framing_mode"]
     if mode == "fit":
@@ -164,9 +50,7 @@ def filter_graph(snapshot: dict, ass_path: Path) -> str:
         zoom = max(1.0, min(3.0, float(clip.get("manual_zoom", 1))))
         cw, ch = WIDTH / zoom, HEIGHT / zoom
         graph = f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={cw:.3f}:{ch:.3f}:(iw-ow)*({fx}):(ih-oh)*({fy}),scale={WIDTH}:{HEIGHT},setsar=1"
-    # subtitles/libass is used for both preview and final, preserving geometry and timing.
-    path = ass_path.as_posix().replace(":", r"\:").replace("'", r"\'")
-    return f"{graph},subtitles='{path}'"
+    return graph
 
 
 def _section_graph(source_label: str, output_label: str, section: dict, width: int, height: int) -> str:
@@ -183,7 +67,7 @@ def _section_graph(source_label: str, output_label: str, section: dict, width: i
     return f"[{source_label}]{graph},setsar=1[{output_label}]"
 
 
-def split_filter_graph(snapshot: dict, ass_path: Path) -> str:
+def split_filter_graph(snapshot: dict, caption_input: int | None = None) -> str:
     config = snapshot["clip"]["split_layout"]
     ratio = max(.25, min(.75, float(config["split_ratio"])))
     top_height = max(2, round(HEIGHT * ratio / 2) * 2)
@@ -205,29 +89,146 @@ def split_filter_graph(snapshot: dict, ass_path: Path) -> str:
         pieces.append(_section_graph("top_timed", "top", top_config, WIDTH, top_height))
     pieces.append(_section_graph("bottom_timed", "bottom", bottom_config, WIDTH, bottom_height))
     pieces.append("[top][bottom]vstack=inputs=2[stacked]")
-    path = ass_path.as_posix().replace(":", r"\:").replace("'", r"\'")
-    pieces.append(f"[stacked]subtitles='{path}'[outv]")
+    if caption_input is None:
+        pieces.append("[stacked]null[outv]")
+    else:
+        pieces.append(f"[stacked][{caption_input}:v]overlay=0:0:format=auto:eof_action=pass[outv]")
     return ";".join(pieces)
+
+
+def _render_caption_frames(snapshot: dict, job_id: str, fps: float, frame_count: int, progress_callback) -> tuple[Path, Path]:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", job_id):
+        raise ValueError("Render job ID is invalid.")
+    track = snapshot.get("caption_track")
+    if not track or not track.get("segments"):
+        raise ValueError("Caption frame rendering requires a caption track with segments.")
+
+    script = Path(__file__).resolve().parents[3] / "frontend" / "scripts" / "render-captions.mjs"
+    node = shutil.which(os.getenv("CLIPRA_CAPTION_RENDERER_NODE", "node"))
+    if not node:
+        raise RuntimeError("Node.js is required to render captions with the editor's Chromium styles.")
+    if not script.is_file():
+        raise RuntimeError("The CLIPRA caption renderer is missing. Restore frontend/scripts/render-captions.mjs.")
+
+    parent = managed_directory("temp/rendering")
+    frame_directory = parent / f"{job_id}-caption-frames"
+    frame_directory.mkdir(parents=False, exist_ok=False)
+    relative_frames = relative_path(frame_directory)
+    frame_directory = managed_path(relative_frames, must_exist=True)
+    request_path = managed_path(relative_path(parent / f"{job_id}-caption-request.json"))
+    duration = float(snapshot["clip"]["end_seconds"]) - float(snapshot["clip"]["start_seconds"])
+    request = {
+        "track": track,
+        "clipStartSeconds": float(snapshot["clip"]["start_seconds"]),
+        "durationSeconds": duration,
+        "fps": fps,
+        "frameCount": frame_count,
+        "framesDirectory": str(frame_directory),
+    }
+    try:
+        request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        request_path.unlink(missing_ok=True)
+        shutil.rmtree(managed_path(relative_frames, must_exist=True), ignore_errors=True)
+        raise
+
+    command = [node, str(script), str(request_path)]
+    try:
+        process = subprocess.Popen(command, cwd=str(script.parent.parent), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, encoding="utf-8", errors="replace", shell=False)
+    except Exception:
+        request_path.unlink(missing_ok=True)
+        shutil.rmtree(managed_path(relative_frames, must_exist=True), ignore_errors=True)
+        raise
+    stderr_lines: list[str] = []
+    def read_stderr() -> None:
+        assert process.stderr is not None
+        for line in process.stderr:
+            stderr_lines.append(line)
+            if len(stderr_lines) > 100:
+                del stderr_lines[:20]
+    stderr_reader = threading.Thread(target=read_stderr, daemon=True)
+    stderr_reader.start()
+    timed_out = threading.Event()
+    def stop_after_timeout() -> None:
+        if process.poll() is None:
+            timed_out.set()
+            try:
+                process.kill()
+            except OSError:
+                pass
+    timeout_timer = threading.Timer(settings.preview_timeout_seconds, stop_after_timeout)
+    timeout_timer.daemon = True
+    timeout_timer.start()
+    try:
+        assert process.stdout is not None
+        for line in process.stdout:
+            try:
+                event = json.loads(line)
+                progress_callback(min(.12, .12 * int(event["frame"]) / max(1, frame_count)))
+            except (ValueError, KeyError, TypeError):
+                continue
+        code = process.wait()
+        if timed_out.is_set():
+            raise RuntimeError("Chromium exceeded the configured caption rendering time limit.")
+        stderr_reader.join(timeout=2)
+        if code:
+            detail = "".join(stderr_lines)[-3000:].strip()
+            raise RuntimeError(detail or "Chromium could not render the caption frames.")
+        first_frame = frame_directory / "frame-00000000.png"
+        if not first_frame.is_file():
+            raise RuntimeError("Chromium did not produce caption frames.")
+        header = first_frame.open("rb")
+        try:
+            png_header = header.read(26)
+        finally:
+            header.close()
+        if png_header[:8] != b"\x89PNG\r\n\x1a\n" or png_header[25] not in {4, 6}:
+            raise RuntimeError("Chromium caption frames must preserve transparency for video compositing.")
+        request_path.unlink(missing_ok=True)
+        return frame_directory, first_frame
+    except Exception:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        request_path.unlink(missing_ok=True)
+        shutil.rmtree(managed_path(relative_frames, must_exist=True), ignore_errors=True)
+        raise
+    finally:
+        timeout_timer.cancel()
 
 
 def render(snapshot: dict, output: Path, *, preview: bool, job_id: str, progress_callback) -> None:
     source = managed_path(snapshot["source_relative_path"], must_exist=True)
-    ass_dir = managed_directory("temp/rendering")
-    ass_path = ass_dir / f"{job_id}.ass"
-    partial = ass_dir / f"{job_id}.partial.mp4"
-    ass_path.write_text(build_ass(snapshot.get("caption_track"), snapshot["clip"]), encoding="utf-8")
+    managed_directory("temp/rendering")
+    partial = managed_path(f"temp/rendering/{job_id}.partial.mp4")
     duration = snapshot["clip"]["end_seconds"] - snapshot["clip"]["start_seconds"]
     command = [settings.ffmpeg_path or "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{snapshot['clip']['start_seconds']:.6f}", "-i", str(source)]
     split_layout = snapshot["clip"].get("layout_type", "original") == "split_streamer_gameplay"
+    caption_track = snapshot.get("caption_track")
+    caption_frames: Path | None = None
     if split_layout and snapshot["clip"]["split_layout"]["top"]["source_mode"] == "custom_image":
         image = managed_path(snapshot["layout_image_relative_path"], must_exist=True)
         fps = max(1.0, min(120.0, float(snapshot.get("source_frame_rate_decimal") or 30)))
         command.extend(["-loop", "1", "-framerate", f"{fps:.6f}", "-i", str(image)])
+    fps = max(1.0, min(120.0, float(snapshot.get("source_frame_rate_decimal") or 30)))
+    frame_count = max(1, round(float(duration) * fps))
+    if caption_track and caption_track.get("segments"):
+        caption_frames, _first_frame = _render_caption_frames(
+            snapshot, job_id, fps, frame_count,
+            lambda progress: progress_callback(progress),
+        )
+        caption_input = 2 if split_layout and snapshot["clip"]["split_layout"]["top"]["source_mode"] == "custom_image" else 1
+        command.extend(["-framerate", f"{fps:.6f}", "-start_number", "0", "-i", str(caption_frames / "frame-%08d.png")])
+    else:
+        caption_input = None
     command.extend(["-t", f"{duration:.6f}"])
     if split_layout:
-        command.extend(["-filter_complex", split_filter_graph(snapshot, ass_path), "-map", "[outv]"])
+        command.extend(["-filter_complex", split_filter_graph(snapshot, caption_input), "-map", "[outv]"])
+    elif caption_input is not None:
+        command.extend(["-filter_complex", f"[0:v]{filter_graph(snapshot)}[base];[base][{caption_input}:v]overlay=0:0:format=auto:eof_action=pass[outv]", "-map", "[outv]"])
     else:
-        command.extend(["-vf", filter_graph(snapshot, ass_path), "-map", "0:v:0"])
+        command.extend(["-vf", filter_graph(snapshot), "-map", "0:v:0"])
     command.extend(["-map", "0:a:0?", "-c:v", "libx264", "-preset", "ultrafast" if preview else "medium", "-crf", "30" if preview else "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(partial)])
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", shell=False)
@@ -235,7 +236,9 @@ def render(snapshot: dict, output: Path, *, preview: bool, job_id: str, progress
             assert process.stdout is not None
             for line in process.stdout:
                 if line.startswith("out_time_ms="):
-                    try: progress_callback(min(.99, int(line.split("=", 1)[1]) / (duration * 1_000_000)))
+                    try:
+                        fraction = int(line.split("=", 1)[1]) / (duration * 1_000_000)
+                        progress_callback(.12 + min(.87, .87 * fraction) if caption_frames is not None else min(.99, fraction))
                     except (ValueError, ZeroDivisionError): pass
         reader = threading.Thread(target=read_progress, daemon=True)
         reader.start()
@@ -253,6 +256,7 @@ def render(snapshot: dict, output: Path, *, preview: bool, job_id: str, progress
             raise FileExistsError("Render destination already exists; refusing to replace an earlier render.")
         os.replace(partial, output)
     finally:
-        ass_path.unlink(missing_ok=True)
         partial.unlink(missing_ok=True)
+        if caption_frames is not None:
+            shutil.rmtree(managed_path(relative_path(caption_frames), must_exist=True), ignore_errors=True)
 

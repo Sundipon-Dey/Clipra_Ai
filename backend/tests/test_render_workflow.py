@@ -6,7 +6,7 @@ from pathlib import Path
 
 from app.services.project_store import get_media_record
 from app.db.database import connect, initialize_database
-from app.services.render_pipeline import build_ass, render
+from app.services.render_pipeline import render
 from app.services.render_snapshot import capture
 from app.services.render_store import get
 from app.services.storage import managed_directory, managed_path
@@ -22,56 +22,7 @@ def _import_video(client, tmp_path: Path):
     return response.json()["imported"][0]
 
 
-def test_one_word_ass_keeps_supported_punctuation_rule_and_timing():
-    clip = {"start_seconds": 2.0}
-    track = {"style": {"font_family": "Arial", "font_weight": 700, "font_size": 62, "text_color": "#FFFFFF", "highlight_color": "#E8FF4D", "outline_color": "#000000", "outline_width": 3, "shadow_offset": 0, "background_color": "#000000", "background_opacity": 0, "alignment": "center", "animation": "none", "animation_ms": 0},
-             "grouping": {"display_mode": "one_word"}, "position_x": .5, "position_y": .76, "timing_offset_seconds": 0,
-             "segments": [{"start_seconds": .1, "end_seconds": 1.0, "generated_text": "Hello, world.", "words": [
-                 {"start_seconds": .1, "end_seconds": .4, "text": "Hello,"}, {"start_seconds": .5, "end_seconds": .9, "text": "world."}]}]}
-    ass = build_ass(track, clip)
-    assert "Hello," not in ass and "world." not in ass
-    assert "Hello" in ass and "world" in ass
-    assert "0:00:00.10" in ass
-
-
-def test_phrase_ass_matches_active_word_preset_colors_pop_and_shadow_without_outline():
-    track = {"style": {"font_family": "Arial", "font_weight": 700, "font_size": 62, "text_color": "#FFFFFF", "highlight_color": "#00FFFF", "outline_color": "#000000", "outline_width": 3, "shadow_color": "#FF008C", "shadow_offset": 4, "background_color": "#000000", "background_opacity": 0, "alignment": "center", "animation": "pop_karaoke", "animation_ms": 120},
-             "grouping": {"display_mode": "phrase"}, "position_x": .5, "position_y": .76, "timing_offset_seconds": 0,
-             "segments": [{"start_seconds": .1, "end_seconds": .9, "generated_text": "Hello world", "words": [
-                 {"start_seconds": .1, "end_seconds": .5, "text": "Hello"}, {"start_seconds": .5, "end_seconds": .9, "text": "world"}]}]}
-    ass = build_ass(track, {"start_seconds": 0})
-    dialogue = [line for line in ass.splitlines() if line.startswith("Dialogue:")]
-    assert len(dialogue) == 2
-    assert r"{\c&H00FFFF00&\fscx72\fscy72\t(0,120,\fscx128\fscy128)" in dialogue[0]
-    assert r"{\c&H00FFFF00&\fscx72\fscy72\t(0,120,\fscx128\fscy128)" in dialogue[1]
-    assert r"{\c&H00FFFFFF&\fscx100\fscy100}" in dialogue[0]
-    assert r"\k" not in ass
-    style_line = next(line for line in ass.splitlines() if line.startswith("Style:"))
-    assert style_line.split(",")[10] == "0"
-    assert style_line.split(",")[11] == "6.0"
-    assert r"\4c&H008C00FF&" in ass
-
-
-def test_every_caption_animation_pops_the_active_spoken_word():
-    for animation, animation_ms in (("none", 0), ("fade", 160), ("pop", 140), ("karaoke", 90), ("pop_karaoke", 120)):
-        track = {"style": {"font_family": "Arial", "font_weight": 700, "font_size": 62, "text_color": "#FFFFFF", "highlight_color": "#00FFFF", "outline_color": "#000000", "outline_width": 0, "shadow_color": "#000000", "shadow_offset": 0, "background_color": "#000000", "background_opacity": 0, "alignment": "center", "animation": animation, "animation_ms": animation_ms},
-                 "grouping": {"display_mode": "phrase"}, "position_x": .5, "position_y": .76, "timing_offset_seconds": 0,
-                 "segments": [{"start_seconds": .1, "end_seconds": .9, "generated_text": "Hello world", "words": [{"start_seconds": .1, "end_seconds": .5, "text": "Hello"}, {"start_seconds": .5, "end_seconds": .9, "text": "world"}]}]}
-        dialogue = [line for line in build_ass(track, {"start_seconds": 0}).splitlines() if line.startswith("Dialogue:")]
-        assert len(dialogue) == 2, animation
-        assert r"\fscx72\fscy72\t(0," in dialogue[0], animation
-        assert r"\fscx72\fscy72\t(0," in dialogue[1], animation
-
-
-def test_plain_caption_override_escapes_ass_controls():
-    track = {"style": {"font_family": "Arial", "font_weight": 700, "font_size": 62, "text_color": "#FFFFFF", "highlight_color": "#00FFFF", "outline_color": "#000000", "outline_width": 3, "shadow_offset": 0, "background_color": "#000000", "background_opacity": 0, "alignment": "center", "animation": "none", "animation_ms": 0},
-             "grouping": {}, "position_x": .5, "position_y": .76, "timing_offset_seconds": 0,
-             "segments": [{"start_seconds": .1, "end_seconds": .9, "override_text": "literal {\\k20} text", "words": []}]}
-    ass = build_ass(track, {"start_seconds": 0})
-    assert r"literal \{\\k20\} text" in ass
-
-
-def test_caption_preview_renders_timed_word_colors_through_ffmpeg(client, tmp_path):
+def test_caption_preview_uses_editor_chromium_overlay_through_ffmpeg(client, tmp_path):
     media_json = _import_video(client, tmp_path)
     media = get_media_record(media_json["id"])
     style = {"font_family": "Arial", "font_weight": 700, "font_size": 62, "text_color": "#FFFFFF", "highlight_color": "#00FFFF", "outline_color": "#000000", "outline_width": 8, "shadow_color": "#FF008C", "shadow_offset": 4, "background_color": "#000000", "background_opacity": 0, "alignment": "center", "animation": "pop_karaoke", "animation_ms": 120}
@@ -87,6 +38,14 @@ def test_caption_preview_renders_timed_word_colors_through_ffmpeg(client, tmp_pa
     probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", str(output)], check=True, capture_output=True, text=True)
     video = json.loads(probe.stdout)["streams"][0]
     assert (video["width"], video["height"]) == (1080, 1920)
+    caption_frame = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", "0.25", "-i", str(output), "-frames:v", "1",
+         "-vf", "crop=1080:500:0:1250,format=rgb24", "-f", "rawvideo", "pipe:1"],
+        check=True, capture_output=True, timeout=30,
+    ).stdout
+    assert len(caption_frame) == 1080 * 500 * 3
+    assert any(caption_frame[index] > 180 for index in range(0, len(caption_frame), 3)), "Rendered caption pixels should be visible in the transparent composition area."
+    assert not (managed_directory("temp/rendering") / "caption-timing-fixture-caption-frames").exists(), "Temporary Chromium caption frames should be removed after render."
     output.unlink(missing_ok=True)
 
 

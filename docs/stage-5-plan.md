@@ -6,7 +6,7 @@ Stage 5 completes one clip at a time from saved draft through rendered review, e
 
 ## Implementation decisions
 
-- A render snapshot captures source identity, clip boundaries, framing settings and focal points, and the current boundary-valid caption track. Preview and export use the same FFmpeg filter graph and caption script. Preview may encode faster and at lower quality; it retains the export dimensions, crop, timing, style, and effects.
+- A render snapshot captures source identity, clip boundaries, framing settings and focal points, and the current boundary-valid caption track. Preview and export use the same FFmpeg composition pipeline and Chromium-rendered `CaptionOverlay` caption frames. Preview may encode faster and at lower quality; it retains the export dimensions, crop, timing, browser CSS, style, and effects.
 - A preview is eligible for approval only while the current persisted edit snapshot has the same SHA-256 configuration hash. Editing after preview makes it stale; export approval requires a newly rendered current preview.
 - Approval is a separate explicit action. It creates an immutable export job from the reviewed preview snapshot. Export files use unique destinations and monotonically numbered V1, V2, … versions. Editing never changes an existing export.
 - Completed previews and exports are managed workspace files, streamed with byte ranges. Exports support browser playback and download. The UI offers Reopen in Editor and export history.
@@ -21,6 +21,6 @@ Stage 5 completes one clip at a time from saved draft through rendered review, e
 
 ## Known constraints
 
-- Caption burn-in requires the installed FFmpeg build to include libass (`subtitles` filter); requested fonts may be substituted by the operating system.
+- Caption rendering requires Node.js and installed Microsoft Edge or Google Chrome. CLIPRA does not download a browser binary.
 - Stage 5 exports H.264/AAC at 1080 × 1920. The preview uses the same geometry and filters but a faster preset and lower encoding quality.
-- Smart Crop follows saved focal points. Unsupported caption CSS nuances are represented through the existing ASS-compatible style fields and animations.
+- Smart Crop follows saved focal points. Caption appearance and animation use Chromium screenshots with transparent backgrounds, composited by FFmpeg.

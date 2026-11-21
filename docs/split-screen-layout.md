@@ -19,9 +19,9 @@ Images receive immutable generated filenames and are never replaced in place. Ch
 
 ## Rendering and verification
 
-The preview and final export renderer share the same FFmpeg filter graph for split composition, section framing, timing, caption overlay, and the single source audio stream. Preview encoding may use a faster preset and lower quality. Any clip edit changes the snapshot hash and makes an earlier preview ineligible for approval.
+The preview and final export renderer share the same FFmpeg filter graph for split composition, section framing, timing, and the single source audio stream. Captions are rendered by Chromium using the editor's `CaptionOverlay` component and stylesheet, captured with transparency, then composited over the video by FFmpeg. Preview encoding may use a faster preset and lower quality; both render kinds use the same caption browser, fonts, CSS, and frame timing. Any clip edit changes the snapshot hash and makes an earlier preview ineligible for approval.
 
-Caption exports follow the editor's current preset text/highlight colors and preset shadow, apply word highlighting and a pop to each spoken word over saved word timings, and ignore legacy outline width. The selected preset's cue-entry animation also remains applied. These word pops are consistent across all presets in the editor preview and rendered output. Caption position remains the saved track position.
+Caption exports use the same browser component as the editor, so preset font, size, colors, shadows, line layout, word highlighting, animations, and saved position come from the same CSS. Legacy outline width remains ignored because the editor no longer exposes stroke controls.
 
 Backend coverage is in `backend/tests/test_split_layout.py` and the Stage 5 render workflow tests. Run the backend suite from the repository root:
 

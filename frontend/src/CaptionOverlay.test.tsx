@@ -11,6 +11,19 @@ const track: CaptionTrack = {
 }
 
 describe('caption overlay', () => {
+  it('uses the same popup treatment in one-word mode and removes periods and commas', () => {
+    const oneWordTrack = {
+      ...track,
+      grouping: { ...track.grouping, display_mode: 'one_word' as const },
+      segments: track.segments.map((segment) => ({
+        ...segment,
+        words: segment.words.map((word, index) => index === 0 ? { ...word, text: 'Hello,' } : word),
+      })),
+    }
+    render(<CaptionOverlay track={oneWordTrack} clipStart={0} currentSourceTime={1.4} editing onPosition={() => undefined}/> )
+    expect(screen.getByText('Hello')).toHaveClass('active-word-pop')
+  })
+
   it('pops active words even when the selected preset has no cue animation', () => {
     const minimalTrack = { ...track, style: { ...track.style, animation: 'none' as const, animation_ms: 0 } }
     render(<CaptionOverlay track={minimalTrack} clipStart={0} currentSourceTime={1.4} editing onPosition={() => undefined}/> )
