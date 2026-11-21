@@ -1,12 +1,10 @@
 """Draft clip editing and optional Smart Crop recommendation endpoints."""
 
-import sqlite3
-
 from fastapi import APIRouter, HTTPException, Response, status
 
 from app.core.config import settings
 from app.models.schemas import ClipCreate, ClipOut, ClipUpdate, FramingSuggestionRequest
-from app.services.clip_store import candidate_media, claim_framing, create_clip, delete_clip, get_clip, list_clips, update_clip
+from app.services.clip_store import claim_framing, create_clip, delete_clip, get_clip, list_clips, update_clip
 from app.services.framing_queue import enqueue_framing
 from app.services.project_store import get_media_record
 from app.services.caption_store import mark_tracks_stale
@@ -39,20 +37,6 @@ def post_manual_clip(media_id: str, payload: ClipCreate):
     media = _duration(media_id)
     _validate_bounds(payload.start_seconds, payload.end_seconds, media["duration_seconds"])
     return create_clip(project_id=media["project_id"], media_id=media_id, title=payload.title, start=payload.start_seconds, end=payload.end_seconds)
-
-
-@router.post("/api/analysis-candidates/{candidate_id}/clips", response_model=ClipOut, status_code=status.HTTP_201_CREATED)
-def post_candidate_clip(candidate_id: str):
-    candidate = candidate_media(candidate_id)
-    if candidate is None:
-        raise HTTPException(status_code=404, detail="Highlight suggestion not found.")
-    media = _duration(candidate["media_id"])
-    _validate_bounds(candidate["start_seconds"], candidate["end_seconds"], media["duration_seconds"])
-    try:
-        return create_clip(project_id=media["project_id"], media_id=media["id"], candidate_id=candidate_id,
-                           title=candidate["title"], start=candidate["start_seconds"], end=candidate["end_seconds"])
-    except sqlite3.IntegrityError as exc:
-        raise HTTPException(status_code=409, detail="This suggestion could not be converted to a draft clip.") from exc
 
 
 @router.get("/api/clips/{clip_id}", response_model=ClipOut)

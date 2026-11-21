@@ -1,6 +1,6 @@
 # Split-Screen Streamer + Gameplay
 
-The optional split layout is part of the Stage 5 clip configuration. It renders to the existing 9:16, 1080 x 1920 profile and uses one direct, explicitly approved export from the current saved configuration. The Original Layout remains the default and continues through its existing render filter.
+The optional split layout is part of the Stage 5 clip configuration. It renders to the selected 9:16 export profile (1080 x 1920 by default, or 1440 x 2560 when the original upload qualifies) and uses one direct, explicitly approved export from the current saved configuration. The Original Layout remains the default and continues through its existing render filter.
 
 ## Editor behavior
 

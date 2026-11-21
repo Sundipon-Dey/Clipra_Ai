@@ -70,7 +70,7 @@ def test_schema_v7_migrates_to_split_layout_additions(client):
         columns = {row["name"] for row in db.execute("PRAGMA table_info(clips)").fetchall()}
         assert "layout_type" in columns and "split_layout_json" in columns
         assert db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='clip_layout_assets'").fetchone()
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 8
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 10
 
 
 def test_original_layout_snapshot_keeps_legacy_shape(client, tmp_path):

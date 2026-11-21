@@ -44,6 +44,60 @@ class ProjectDetail(ProjectSummary):
     media: list[MediaOut]
 
 
+class ClipwingImportRequest(BaseModel):
+    analysis_text: str = Field(min_length=1, max_length=100_000)
+    confirm_rights: bool
+
+
+class ClipwingDownloadRequest(BaseModel):
+    format_id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
+
+
+class ClipwingFormatOut(BaseModel):
+    format_id: str
+    label: str
+    width: int | None
+    height: int
+    ext: str
+    video_codec: str
+    audio_codec: str | None
+    fps: float | None
+    filesize_bytes: int | None
+
+
+class ClipwingEntryOut(BaseModel):
+    id: str
+    ordinal: int
+    title: str
+    start_seconds: float
+    end_seconds: float
+    score: float | None
+    transcript: str | None
+    caption_source: str
+    selected_format_id: str | None
+    status: str
+    progress: float
+    error_message: str | None
+    media_id: str | None
+    clip_id: str | None
+    video_url: str
+
+
+class ClipwingImportOut(BaseModel):
+    id: str
+    project_id: str
+    status: str
+    stage: str
+    progress: float
+    video_title: str | None
+    video_duration_seconds: float | None
+    formats: list[ClipwingFormatOut] = Field(default_factory=list)
+    error_message: str | None
+    created_at: str
+    updated_at: str
+    entries: list[ClipwingEntryOut]
+
+
 class ImportFailure(BaseModel):
     filename: str
     error: str
@@ -62,38 +116,6 @@ class PreviewResult(BaseModel):
 class ErrorResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     detail: str
-
-
-class AnalysisStart(BaseModel):
-    force: bool = False
-
-
-class HighlightCandidateOut(BaseModel):
-    id: str
-    ordinal: int
-    start_seconds: float
-    end_seconds: float
-    title: str
-    description: str
-    category: str
-    reasoning: str
-    confidence: float | None
-
-
-class AnalysisRunOut(BaseModel):
-    id: str
-    project_id: str
-    media_id: str
-    status: str
-    model_name: str
-    prompt_version: str
-    created_at: str
-    started_at: str | None
-    completed_at: str | None
-    error_code: str | None
-    error_message: str | None
-    cleanup_pending: bool
-    candidates: list[HighlightCandidateOut] = Field(default_factory=list)
 
 
 class FocalPointOut(BaseModel):
@@ -117,7 +139,7 @@ class ClipCreate(BaseModel):
 
 class SplitSectionConfig(BaseModel):
     framing_mode: Literal["crop", "fit"] = "crop"
-    zoom: float = Field(default=1, ge=1, le=3, allow_inf_nan=False)
+    zoom: float = Field(default=1, ge=1, le=10, allow_inf_nan=False)
     position_x: float = Field(default=.5, ge=0, le=1, allow_inf_nan=False)
     position_y: float = Field(default=.5, ge=0, le=1, allow_inf_nan=False)
     fit_background_color: str = Field(default="#090a0f", pattern=r"^#[0-9A-Fa-f]{6}$")
@@ -212,11 +234,13 @@ class RenderJobOut(BaseModel):
     stream_url: str | None = None
     download_url: str | None = None
     current: bool = False
+    resolution: Literal["1080", "1440"] = "1080"
 
 
 class RenderApproval(BaseModel):
     approved: bool
     caption_track_id: str | None = None
+    resolution: Literal["1080", "1440"] = "1080"
 
 
 class FramingSuggestionRequest(BaseModel):

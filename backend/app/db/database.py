@@ -246,10 +246,57 @@ def initialize_database() -> None:
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS ix_clip_layout_assets_clip ON clip_layout_assets(clip_id, created_at DESC);
-            PRAGMA user_version = 8;
+            CREATE TABLE IF NOT EXISTS clipwing_imports (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                video_url TEXT NOT NULL,
+                analysis_text TEXT NOT NULL,
+                video_title TEXT,
+                video_duration_seconds REAL,
+                formats_json TEXT NOT NULL DEFAULT '[]',
+                status TEXT NOT NULL CHECK(status IN ('queued','downloading','cutting','completed','completed_with_errors','failed','interrupted')),
+                stage TEXT NOT NULL DEFAULT 'queued',
+                progress REAL NOT NULL DEFAULT 0 CHECK(progress BETWEEN 0 AND 1),
+                error_message TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS ix_clipwing_imports_project ON clipwing_imports(project_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS ix_clipwing_imports_queue ON clipwing_imports(status, created_at);
+            CREATE TABLE IF NOT EXISTS clipwing_entries (
+                id TEXT PRIMARY KEY,
+                import_id TEXT NOT NULL REFERENCES clipwing_imports(id) ON DELETE CASCADE,
+                ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
+                title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 160),
+                start_seconds REAL NOT NULL CHECK(start_seconds >= 0),
+                end_seconds REAL NOT NULL CHECK(end_seconds > start_seconds),
+                score REAL CHECK(score IS NULL OR (score >= 0 AND score <= 100)),
+                transcript TEXT,
+                caption_source TEXT NOT NULL DEFAULT 'none' CHECK(caption_source IN ('none','youtube')),
+                selected_format_id TEXT,
+                video_url TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('queued','cutting','ready','failed','interrupted')),
+                progress REAL NOT NULL DEFAULT 0 CHECK(progress BETWEEN 0 AND 1),
+                error_message TEXT,
+                media_id TEXT REFERENCES media(id) ON DELETE SET NULL,
+                clip_id TEXT REFERENCES clips(id) ON DELETE SET NULL,
+                UNIQUE(import_id, ordinal)
+            );
+            CREATE INDEX IF NOT EXISTS ix_clipwing_entries_import ON clipwing_entries(import_id, ordinal);
+            PRAGMA user_version = 10;
             """
         )
         clip_columns = {row["name"] for row in connection.execute("PRAGMA table_info(clips)").fetchall()}
+        import_columns = {row["name"] for row in connection.execute("PRAGMA table_info(clipwing_imports)").fetchall()}
+        if "video_title" not in import_columns:
+            connection.execute("ALTER TABLE clipwing_imports ADD COLUMN video_title TEXT")
+        if "video_duration_seconds" not in import_columns:
+            connection.execute("ALTER TABLE clipwing_imports ADD COLUMN video_duration_seconds REAL")
+        if "formats_json" not in import_columns:
+            connection.execute("ALTER TABLE clipwing_imports ADD COLUMN formats_json TEXT NOT NULL DEFAULT '[]'")
+        entry_columns = {row["name"] for row in connection.execute("PRAGMA table_info(clipwing_entries)").fetchall()}
+        if "selected_format_id" not in entry_columns:
+            connection.execute("ALTER TABLE clipwing_entries ADD COLUMN selected_format_id TEXT")
         if "framing_start_seconds" not in clip_columns:
             connection.execute("ALTER TABLE clips ADD COLUMN framing_start_seconds REAL")
         if "framing_end_seconds" not in clip_columns:

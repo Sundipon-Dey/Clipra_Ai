@@ -8,7 +8,7 @@ from app.services.layout_image_store import get_layout_image
 from app.services.storage import managed_path
 
 
-def capture(clip_id: str, caption_track_id: str | None = None) -> dict | None:
+def capture(clip_id: str, caption_track_id: str | None = None, resolution: str = "1080") -> dict | None:
     clip = get_clip(clip_id)
     if not clip:
         return None
@@ -38,8 +38,12 @@ def capture(clip_id: str, caption_track_id: str | None = None) -> dict | None:
         managed_path(asset["relative_path"], must_exist=True)
         layout_image_relative_path = asset["relative_path"]
     clip_snapshot = dict(clip)
+    dimensions = {"1080": (1080, 1920), "1440": (1440, 2560)}
+    if resolution not in dimensions:
+        return None
+    width, height = dimensions[resolution]
     snapshot = {
-        "profile": {"aspect_ratio": "9:16", "width": 1080, "height": 1920},
+        "profile": {"resolution": resolution, "aspect_ratio": "9:16", "width": width, "height": height},
         "clip": clip_snapshot,
         "source_relative_path": media["source_relative_path"],
         "source_size_bytes": media["size_bytes"],

@@ -46,7 +46,7 @@ async function main() {
   const requestPath = process.argv[2]
   if (!requestPath) throw new Error('Caption render request path is required.')
   const request = JSON.parse(await readFile(requestPath, 'utf8'))
-  const { track, clipStartSeconds, durationSeconds, fps, frameCount, framesDirectory } = request
+  const { track, clipStartSeconds, durationSeconds, fps, frameCount, framesDirectory, captionScale = 3 } = request
   if (!track || !Array.isArray(track.segments) || !Number.isFinite(clipStartSeconds) || !Number.isFinite(durationSeconds) || !Number.isFinite(fps) || !Number.isInteger(frameCount) || frameCount < 1) {
     throw new Error('Caption render request is invalid.')
   }
@@ -80,7 +80,8 @@ async function main() {
     }
     if (!browser) throw new Error(`CLIPRA needs Microsoft Edge or Google Chrome installed for caption rendering. ${errors.join(' | ')}`)
 
-    const context = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 3, reducedMotion: 'no-preference', colorScheme: 'dark' })
+    if (![3, 4].includes(captionScale)) throw new Error('Caption output scale is invalid.')
+    const context = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: captionScale, reducedMotion: 'no-preference', colorScheme: 'dark' })
     const page = await context.newPage()
     page.setDefaultTimeout(30_000)
     const payload = { track, clipStartSeconds }

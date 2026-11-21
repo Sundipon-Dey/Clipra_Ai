@@ -190,6 +190,17 @@ def list_queued_analysis_ids() -> list[str]:
     return [row["id"] for row in rows]
 
 
+def interrupt_legacy_gemini_runs() -> None:
+    """Stop old highlight-analysis jobs now that the product uses pasted Clipwing data."""
+    with connect() as connection:
+        connection.execute(
+            "UPDATE analysis_runs SET status='interrupted',completed_at=?,error_code='feature_removed',"
+            "error_message='Gemini highlight analysis was removed; paste Clipwing analysis data instead.' "
+            "WHERE status IN ('queued','uploading','processing_file','analyzing')",
+            (utc_now(),),
+        )
+
+
 def list_interrupted_cleanup_records():
     with connect() as connection:
         return connection.execute(

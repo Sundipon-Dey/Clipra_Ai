@@ -1,8 +1,8 @@
 # CLIPRA.AI
 
-CLIPRA.AI is a local-first Windows application for organizing, previewing, and finding highlight moments in authorized video footage. It supports local projects, multiple video imports, real FFprobe metadata, SQLite persistence, range-based playback, separate preview copies, explicit Gemini video analysis, and editable draft clips with vertical framing.
+CLIPRA.AI is a local-first Windows application for organizing and editing authorized video. It supports local projects, imported media, FFprobe metadata, SQLite persistence, range-based playback, editable clips, captions, split-screen layouts, and versioned exports. You can paste timestamped suggestions from an external video-analysis service such as Clipwing and import those segments as individual editable clips.
 
-Stage 2 suggestions remain recommendations until a user turns one into an editable draft clip. Stage 4 adds optional, local faster-whisper transcription and editable caption tracks. Stage 5 renders each approved clip once as a versioned 1080 x 1920 H.264 MP4.
+Clipwing suggestions remain user-provided input; each selected segment is downloaded as a separate managed MP4 and opened as an editable draft. Stage 4 adds optional, local faster-whisper transcription and editable caption tracks. Stage 5 renders each approved clip once as a versioned MP4.
 
 ## Requirements
 
@@ -31,7 +31,7 @@ npm ci
 Pop-Location
 ```
 
-The Python lock includes pinned runtime and test dependencies. Direct runtime pins are in `backend/requirements.txt`; pinned test dependencies are in `backend/requirements-dev.txt`. Stage 2 uses the official Google `google-genai` Python SDK; it does not download AI models.
+The Python lock includes pinned runtime and test dependencies. Direct runtime pins are in `backend/requirements.txt`; pinned test dependencies are in `backend/requirements-dev.txt`. Gemini remains optional for Smart Crop focal-point suggestions only. Clipwing import uses pinned `yt-dlp` and does not require Gemini.
 
 ## Configuration
 
@@ -61,9 +61,9 @@ CLIPRA_TRANSCRIPTION_MODEL=small.en
 
 Leave `CLIPRA_WORKSPACE_DIR` empty to use the repository workspace, or set it to an absolute path such as `D:\CLIPRA-Workspace`. Leave the executable settings empty to use `PATH`. The upload limit is in bytes and applies independently to each file. The UI displays the limit returned by the backend health endpoint.
 
-The Gemini key and model settings are read only by backend code. Do not put secrets in frontend configuration. The default model is `gemini-3.5-flash-lite`; `GEMINI_MODEL` remains configurable. The configured model and key are used by backend code only. `GEMINI_TIMEOUT_SECONDS` applies to each SDK HTTP request; `GEMINI_INTERACTION_TIMEOUT_SECONDS` limits the server-side analysis duration. Automatic SDK retries are disabled (`attempts=1`). The maximum individual upload defaults to 2 GiB, the documented Files API per-file limit. The Files API project storage limit is 20 GB and uploaded files expire after 48 hours; CLIPRA also attempts immediate deletion after analysis.
+Gemini key and model settings are read only by backend code and are used for optional Smart Crop suggestions. Do not put secrets in frontend configuration. No video highlight-analysis feature uploads a video to Gemini.
 
-The Gemini API can consume free-tier quota and may be billable depending on the AI Studio project. Free-tier access, quota, model availability, and pricing can change. CLIPRA does not enable billing or guarantee free usage. Before every analysis, the UI identifies the video that will be uploaded and asks for confirmation. Only the managed copy is sent; the original file remains unchanged. No video is uploaded until the user explicitly starts analysis. Gemini background interactions are stored server-side by Google while active; CLIPRA deletes the interaction record and file after receiving and saving the result. Cleanup failure is shown and retried at restart where possible.
+Each Smart Crop request requires explicit confirmation and sends three selected still frames from the managed clip to Google. It may consume API quota or incur charges. Source videos remain unchanged.
 
 The backend-only diagnostic makes one minimal text-generation request to the configured model. It does not upload video or modify billing settings. Run it from the repository root only when you want to test the connection:
 
@@ -90,18 +90,18 @@ npm run dev
 
 Open `http://127.0.0.1:5173`. Stop each server with `Ctrl+C`; then run `Pop-Location` in the frontend terminal to return to the repository root.
 
-## Import, preview, and analyze videos
+## Import videos and Clipwing suggestions
 
 1. Select **New project**, enter a project name, and create it.
 2. In the project, choose or drop one or more MP4, MOV, MKV, AVI, or WebM files.
 3. Select **Import**. Each file uploads independently and is validated by FFprobe. A failed file does not prevent other files from importing.
-4. Review real metadata in **Imported videos** and select **Open preview**.
-5. To request highlight suggestions, choose **Analyze with Gemini**, review the external upload and quota notice, then confirm. CLIPRA uploads the managed source copy using the official Files API. Gemini's agentic video processing scans the timeline and examines promising sections. Long analysis runs use Gemini's server-side background interaction and are polled by the local job worker. This uses one model-analysis request; upload, interaction status polling, and cleanup are separate API operations.
-6. Review the persisted timestamped suggestions. Select **Preview moment** to seek and play that interval in the existing player. Analysis can be run again explicitly; previous run history and candidates remain available.
-7. Choose **Edit as clip** on a suggestion, or **New clip** on a video to create a manual draft. In the editor, set exact in/out times, seek the source, compare a responsive 9:16 preview, choose Smart Crop, Fit / Original, Blurred Background, or Manual Crop, then save. The editor and all manual controls work without Gemini.
-8. Open **Captions & subtitles** in the clip editor. The hardware card recommends a local faster-whisper model. No transcription model is downloaded automatically: choose **Download model** explicitly, then choose **Transcribe clip locally**. The audio is extracted only to managed temporary storage and deleted after the local transcription completes or fails.
-9. Choose one of seven render-compatible presets, select Phrase or One word text display, review phrase grouping and word timing, edit words, drag the caption inside the 9:16 preview, and use the safe-zone guides. One word mode shows only the word at its saved timing. Caption styling and display mode are persisted as draft data only; no final video is rendered in Stage 4.
-10. In the clip editor, choose **Split-Screen Streamer + Gameplay** to stack a streamer section above gameplay. Choose Same Video, a PNG/JPG/WebP custom image, or a solid color for the top section. Select Top or Bottom controls to change each section's fit/crop, zoom, and position independently. Drag content inside a pane to reposition it, or drag the divider to resize the sections. Save the draft, then click **Export** once to approve and render a versioned output.
+4. Review real metadata in **Imported videos** and open the playback preview if desired.
+5. In the project’s **Paste Clipwing analysis** section, paste results containing numbered titles, timestamp ranges, optional scores and transcript excerpts, and a YouTube link for the same video. Confirm that you have permission to download and edit that public video, then choose **Check video details**.
+6. CLIPRA performs a metadata lookup once for the shared video and displays its title, duration, and available format/resolution choices beside each suggestion. It does not download the video during this step. Choose the quality for each clip and click that row’s **Download clip** button to begin only that range. Each row shows its own progress.
+7. The selected range is downloaded and recompressed into a managed MP4 with H.264 video and AAC audio. This takes processing time, but CLIPRA does not download the complete source video. A source that is private, unavailable, region-restricted, or otherwise inaccessible without an account cannot be imported. This does not bypass access controls or platform restrictions.
+8. Each completed clip appears in the project library and can be opened independently in the editor. YouTube subtitles are not fetched. To create captions, explicitly download a faster-whisper model, then choose **Transcribe clip locally** in that clip’s editor. Whisper processes the clip locally.
+9. Use **New clip** on an imported video for a manual draft. In the editor, set exact in/out times, choose a framing/layout, and save. Choose **Split-Screen Streamer + Gameplay** for separate top/bottom framing, crop, zoom and position settings; the top can use the same video, a managed custom image, or a solid color.
+10. Edit captions and styling in the editor, then click **Export** to approve and render one version. Exports are kept independently; editing and exporting again creates the next version.
 
 Smart Crop recommendations are optional. Before each request, the user must check an explicit consent box. CLIPRA extracts three small still frames from the selected clip locally and sends those images—not necessarily the full video—to Google through the official GenAI SDK. The request may use API quota or incur charges depending on the Google AI Studio project and current terms. No request is made if consent is declined. Request status and results are stored locally; duplicate active/completed requests are not repeated unless explicitly retried after a failure. Temporary local frame files are removed after processing. Original source files remain unchanged.
 
@@ -111,7 +111,7 @@ Playback streams support HTTP byte ranges, so the video element can seek without
 
 FFprobe/FFmpeg support depends on the installed build and the media's codecs. A file can be importable even if the browser cannot play its source directly; the playback proxy is used for that case.
 
-Gemini Files API currently documents a 2 GB per-file maximum and 20 GB total file storage per project. Agentic processing is documented for `gemini-3.5-flash-lite`; Gemini documents low-resolution videos up to 3 hours for models with a 1M-token context window. A video must also be in a Gemini-supported format and within the selected model's limits. Upload, processing, quota, timeout, and analysis failures are retained as run statuses with safe messages; paid generation requests are not automatically retried. Temporary uploaded files are deleted after a run where possible. If deletion fails or the app exits while a remote interaction is active, the UI marks cleanup as pending; the next startup attempts to cancel stale interactions and delete remote files. Google automatically expires Files API uploads after 48 hours.
+YouTube source downloads depend on the video being publicly accessible to the downloader and on YouTube’s current delivery behavior. Some videos may fail to download. CLIPRA does not support sign-in cookies, private videos, access-control bypass, or automatic publishing. The chosen MP4 cut is re-encoded at CRF 18 to make the exact requested timestamps and ensure H.264/AAC compatibility; this can take longer and is not a stream copy.
 
 ## Local storage and database
 
@@ -131,18 +131,18 @@ projects/<project-id>/layout-images/             # validated split-layout still 
 temp/rendering/                    # transient Chromium caption frames and partial MP4 files
 ```
 
-SQLite schema version 8 contains:
+SQLite schema version 10 contains:
 
 - `projects`: ID, name, creation timestamp, and last-updated timestamp.
 - `media`: project relationship, original filename, managed relative source path, actual byte size, duration, width, height, rational and decimal frame rate, video codec, audio codec and availability, FFprobe container format, preview status/path/error, and import timestamp.
-- `analysis_runs`: project/media relationship, queued/uploading/processing/analyzing/completed/failed/interrupted status, model/prompt versions, source size, timestamps, safe error code/message, Gemini interaction/file references, and cleanup state. Only one active analysis per video is allowed. Queued work resumes on startup; in-flight external calls become `interrupted`, stale Gemini work is cancelled where possible, and generation is not automatically repeated.
-- `analysis_candidates`: validated start/end seconds, title, description, category, reasoning, optional subjective confidence, and ordering linked to the run.
+- `clipwing_imports` and `clipwing_entries`: project-level pasted analysis, normalized single-video URL, safe format/resolution metadata (no signed media URLs), per-entry timestamps/score/transcript/format selection, persistent per-clip download progress and status, and links to resulting media and editable clips.
+- Legacy `analysis_runs` and `analysis_candidates` tables remain for database compatibility; the Gemini highlight-analysis API and UI are removed. Startup marks any old active Gemini analysis rows interrupted.
 - `clips`: editable source time boundaries, title, project/media relationship, optional originating suggestion, framing mode and local manual focus/zoom/blur settings, persisted manual focal-point override, and Smart Crop request state.
 - `clip_focal_points`: ordered timestamped normalized focal points, optional confidence, and cascading clip relationship. Recommendation status, model, timestamps and sanitized failure details are stored on the clip. Pending requests are marked failed on restart instead of being repeated automatically.
 - `transcription_runs`: one local transcription attempt for a clip, including explicit model ID, language, device profile, source-boundary snapshot, status, and sanitized failure data. Runs interrupted while in external/local worker activity are not automatically replayed.
 - `caption_tracks`: editable caption draft metadata, canonical future ASS/FFmpeg-compatible style settings, grouping rules, normalized preview position, safe-zone profile, source-boundary snapshot, and stale indicator.
 - `caption_segments` and `caption_words`: grouped phrases plus word-level times, confidence, original text, and user-edited text.
-- `render_jobs`: immutable JSON configuration snapshots and hashes, per-clip preview/export status and progress, explicit approval timestamps, unique output paths, and monotonically increasing export version numbers. Render history is retained independently of editable clip rows.
+- `render_jobs`: immutable JSON configuration snapshots and hashes, per-clip export status and progress, selected output profile, explicit approval timestamps, unique output paths, and monotonically increasing export version numbers. Render history is retained independently of editable clip rows.
 - `clips.layout_type` and `clips.split_layout_json`: Original Layout default and isolated split-screen settings for both sections, including top source/image/color, framing, zoom, position, and divider ratio.
 - `clip_layout_assets`: validated PNG/JPG/WebP metadata and managed paths for uploaded top-section images. Image files are not automatically deleted when a layout changes or a render snapshot references them.
 
@@ -159,15 +159,15 @@ Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs` w
 | GET | `/api/projects` | List projects and imported media counts. |
 | GET | `/api/projects/{project_id}` | Get a project and its real media metadata. |
 | POST | `/api/projects/{project_id}/media` | Multipart upload; repeat the `files` field for multiple files. Returns independent imported/failed results. |
+| POST | `/api/projects/{project_id}/clipwing-imports` | Start an authorized Clipwing text import after `{ "confirm_rights": true }`. |
+| GET | `/api/projects/{project_id}/clipwing-imports` | List recent Clipwing imports and entries. |
+| GET | `/api/projects/{project_id}/clipwing-imports/{import_id}` | Read download/cut progress and generated clip links. |
+| POST | `/api/projects/{project_id}/clipwing-imports/{import_id}/entries/{entry_id}/download` | Download one suggested time range in its selected source format/resolution, then create an H.264/AAC MP4. |
 | GET, HEAD | `/api/media/{media_id}/stream` | Stream the imported source; supports single HTTP byte ranges and seeking. |
 | POST | `/api/media/{media_id}/preview` | Generate or reuse a separate H.264/AAC preview copy. |
 | GET, HEAD | `/api/media/{media_id}/preview/stream` | Stream the generated preview with byte-range support. |
-| POST | `/api/media/{media_id}/analyses` | Start or reuse a run. Body `{ "force": true }` explicitly creates a new run after a prior terminal result. Repeated active requests reuse the current run. |
-| GET | `/api/media/{media_id}/analyses` | Retrieve analysis history and candidates for each run. |
-| GET | `/api/analyses/{analysis_id}` | Inspect one run and its current status/results. |
 | GET | `/api/media/{media_id}/clips` | List draft clips for a source video. |
 | POST | `/api/media/{media_id}/clips` | Create a manual draft with `title`, `start_seconds`, and `end_seconds`. |
-| POST | `/api/analysis-candidates/{candidate_id}/clips` | Convert a Gemini suggestion into an independent editable draft. |
 | GET | `/api/clips/{clip_id}` | Inspect a draft and its framing request state/focal points. |
 | PATCH | `/api/clips/{clip_id}` | Update title, source boundaries, framing mode, manual focus, zoom, or blur settings. |
 | GET | `/api/clips/{clip_id}/layout-images` | List the clip’s managed custom split-layout images. |
@@ -188,11 +188,11 @@ Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs` w
 | GET, HEAD | `/api/render-jobs/{job_id}/stream` | Play completed exports with HTTP byte-range seeking. |
 | GET | `/api/render-jobs/{job_id}/download` | Download a completed export MP4. |
 
-Stage 5 exports one clip at a time at 9:16 (1080 x 1920). Clicking **Export** is the explicit approval and starts the only render pass. The renderer uses the current saved framing and caption settings, including Chromium-rendered caption frames from the editor's `CaptionOverlay` CSS, with FFmpeg for video composition. Final exports use H.264 CRF 18 with the medium preset and AAC at 160 kb/s. Each export is an immutable V1, V2, and later version; editing resumes on the same draft and never overwrites an earlier output. Source media and completed exports are not automatically deleted. Existing Stage 5 preview files are retained locally but are not generated or shown by the current workflow. Imported-media playback compatibility previews remain separate.
+Stage 5 exports one clip at a time at 9:16. The Export page always offers 1080 x 1920 and offers 1440 x 2560 only when FFprobe reports the original upload is at least 1440p (both source dimensions are at least 1440 pixels). Lower-resolution uploads are limited to 1080p. A 1440p landscape source can still be upscaled after a vertical crop, so larger output dimensions do not restore cropped detail. Clicking **Export** is the explicit approval and starts the only render pass. The renderer uses the current saved framing and caption settings, including Chromium-rendered caption frames from the editor's `CaptionOverlay` CSS, with FFmpeg for video composition. Final exports use H.264 CRF 18 with the medium preset and AAC at 160 kb/s. The chosen output profile is stored in each immutable render snapshot, so versions can use different resolutions without changing the editable draft or prior exports. Each export is an immutable V1, V2, and later version; editing resumes on the same draft and never overwrites an earlier output. Source media and completed exports are not automatically deleted. Existing Stage 5 preview files are retained locally but are not generated or shown by the current workflow. Imported-media playback compatibility previews remain separate.
 
 The split-screen add-on keeps the same output profile and Stage 5 approval/version behavior. A single source video branches into synchronized top and bottom filters; only its original audio stream is mapped. A custom image is looped for the top, or a solid color can fill it, while the source clip supplies the bottom and audio. Captions use the editor's Chromium component and are composited after the sections are stacked; preset colors, shadows, text sizing, word highlighting, and animations use the same CSS as the editor. Each section's framing, zoom, and position settings are independent. Images are limited by `CLIPRA_MAX_LAYOUT_IMAGE_BYTES` (25 MiB by default), an 8192-pixel maximum side, and a 40-megapixel maximum. Replacing an image reference does not delete its managed file.
 
-`GET /api/health` also returns whether a Gemini key is configured, the model name, and the per-file Gemini limit. It never returns the key.
+`GET /api/health` reports whether Gemini is configured for optional Smart Crop suggestions. It never returns the key.
 
 Unsatisfiable or unsupported ranges receive HTTP `416`; successful partial playback requests receive `206 Partial Content`. Missing managed sources return `410 Gone`; unknown projects/media return `404`.
 
@@ -223,9 +223,11 @@ Backend tests generate short synthetic videos and images with FFmpeg locally. Th
 
 - Stage 0: environment, project foundation, and live health check.
 - Stage 1: local projects, multi-file import, FFprobe metadata, SQLite persistence, playback, and compatible preview copies.
-- Stage 2: Gemini video analysis and validated timestamped recommendations (implemented; live video analysis was not used for verification).
+- Stage 2: paste external timestamped suggestions, download authorized public source video, and create independent editable clips (implemented; an actual YouTube download was not used for verification).
 - Stage 3: draft clip editing and optional focal-point framing recommendations (implemented; approval and export are not included).
 - Stage 4: local faster-whisper transcription and editable caption drafts (implemented; Stage 5 exports captions with the editor's Chromium component).
 - Stage 5: direct approved export, immutable versioned MP4s, playback/download, and editing after export (implemented; export uses H.264 CRF 18).
 - Split-Screen Streamer + Gameplay add-on after Stage 5: optional vertical same-video or custom-image composition integrated with direct Stage 5 exports (implemented; no face detection or batch workflow).
+
+See [Clipwing import details](docs/clipwing-import.md) for accepted input format, format selection, per-clip progress, storage behavior, and restart handling.
 

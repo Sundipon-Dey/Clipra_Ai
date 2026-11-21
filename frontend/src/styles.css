@@ -548,6 +548,13 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .clip-editor-page .caption-overlay.canvas-passthrough { pointer-events: none; }
 .clip-editor-page .caption-overlay.canvas-passthrough .caption-text { pointer-events: auto; }
 .clip-editor-page .split-layout-controls { display: grid; gap: 13px; }
+.clip-editor-page .layout-select-wrap { position: relative; }
+.clip-editor-page .layout-select-wrap select,
+.clip-editor-page .editor-field select { width: 100%; min-height: 42px; appearance: none; padding: 10px 38px 10px 12px; color: #f2f1fa; border: 1px solid #343849; border-radius: 9px; background: linear-gradient(145deg, #181b27, #12141d); font-size: 12px; cursor: pointer; outline: 0; }
+.clip-editor-page .layout-select-wrap select:focus,
+.clip-editor-page .editor-field select:focus { border-color: #a881ee; box-shadow: 0 0 0 3px #a881ee22; }
+.clip-editor-page .layout-select-wrap > svg { position: absolute; top: 50%; right: 12px; color: #b6b8c8; transform: translateY(-50%); pointer-events: none; }
+.clip-editor-page .export-resolution-field { width: min(100%, 560px); }
 
 @media (max-width: 1100px) and (min-width: 1001px) {
   .clip-editor-page .clip-editor-grid {
@@ -581,3 +588,57 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 
 .caption-text .active-word-pop { animation-name: caption-word-pop; animation-timing-function: cubic-bezier(.2,.9,.3,1.25); animation-fill-mode: both; transition: none; }
 @keyframes caption-word-pop { 0% { transform: scale(.72); } 62% { transform: scale(1.28); } 100% { transform: scale(1.06); } }
+
+.clipwing-import-panel { margin: 30px 0 42px; padding: 22px; background: linear-gradient(145deg, #141720, #101219); border: 1px solid #ffffff15; border-radius: 15px; }
+.clipwing-import-panel > header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
+.clipwing-icon { width: 37px; height: 37px; flex: 0 0 auto; display: grid; place-items: center; color: #c6a5ff; background: #a881ee18; border: 1px solid #a881ee35; border-radius: 11px; }
+.clipwing-import-panel header .eyebrow { margin: 1px 0 6px; }
+.clipwing-import-panel header h2 { margin: 0; font-size: 18px; font-weight: 620; letter-spacing: -.02em; }
+.clipwing-import-panel header p:last-child { margin: 6px 0 0; color: #9298a7; font-size: 11px; line-height: 1.55; }
+.clipwing-import-panel form { display: grid; gap: 12px; }
+.clipwing-import-panel .editor-field { display: grid; gap: 7px; color: #c5cad6; font-size: 11px; }
+.clipwing-import-panel textarea { width: 100%; min-height: 158px; resize: vertical; padding: 12px; color: #ececf3; border: 1px solid #343849; border-radius: 9px; background: #0c0e14; font: 11px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.clipwing-import-panel textarea:focus { outline: 0; border-color: #a881ee; box-shadow: 0 0 0 3px #a881ee22; }
+.clipwing-quality-note { margin: 0; color: #9da4b4; font-size: 10px; line-height: 1.6; }
+.clipwing-consent { display: flex; align-items: flex-start; gap: 9px; color: #c7cbd5; font-size: 10px; line-height: 1.5; }
+.clipwing-consent input { flex: 0 0 auto; margin: 1px 0 0; accent-color: #b8f36b; }
+.clipwing-import-panel form > .button { justify-self: start; }
+.clipwing-error { margin: 5px 0; color: #ff9b8a; font-size: 10px; line-height: 1.5; }
+.clipwing-job-list { display: grid; gap: 13px; margin-top: 24px; }
+.clipwing-job-list > h3 { margin: 0; color: #dfe1e8; font-size: 13px; }
+.clipwing-job { min-width: 0; padding: 13px; border: 1px solid #ffffff12; border-radius: 11px; background: #0d1017; }
+.clipwing-job-heading { display: flex; justify-content: space-between; gap: 12px; color: #e2e4eb; font-size: 11px; }
+.clipwing-job-heading span { color: #b8f36b; font-variant-numeric: tabular-nums; }
+.clipwing-job progress { display: block; width: 100%; height: 5px; margin: 10px 0; appearance: none; border: 0; border-radius: 9px; overflow: hidden; background: #272b38; }
+.clipwing-job progress::-webkit-progress-bar { background: #272b38; }
+.clipwing-job progress::-webkit-progress-value { border-radius: inherit; background: linear-gradient(90deg, #a881ee, #b8f36b); }
+.clipwing-job progress::-moz-progress-bar { border-radius: inherit; background: linear-gradient(90deg, #a881ee, #b8f36b); }
+.clipwing-entry-list { display: grid; gap: 7px; }
+.clipwing-entry { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 10px; border: 1px solid #ffffff0c; border-radius: 9px; background: #ffffff04; }
+.clipwing-entry-main { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
+.clipwing-entry-main > div { display: grid; gap: 4px; min-width: 0; }
+.clipwing-entry-main strong { color: #e6e7ed; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.clipwing-entry-main small { color: #9399a8; font-size: 9px; line-height: 1.5; }
+.clipwing-entry-state { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; color: #9ba1b0; background: #ffffff09; border-radius: 7px; }
+.clipwing-entry-state.ready { color: #b8f36b; background: #b8f36b12; }
+.clipwing-transcript { margin: 2px 0; color: #bac0cd; font-size: 10px; line-height: 1.5; }
+.clipwing-entry > .button { flex: 0 0 auto; }
+.clipwing-video-meta { margin: 7px 0 11px; color: #a3a9b7; font-size: 10px; }
+.clipwing-job-heading > span { display: inline-flex; align-items: center; gap: 6px; color: #ddc36f; font-size: 10px; }
+.clipwing-entry { align-items: flex-start; }
+.clipwing-entry-main { width: 100%; }
+.clipwing-entry-main > div { width: 100%; }
+.clipwing-format-field { display: grid; gap: 5px; max-width: 540px; margin: 5px 0 2px; color: #c4c9d5; font-size: 9px; }
+.clipwing-format-field select { width: 100%; min-height: 35px; padding: 7px 10px; color: #e5e7ee; border: 1px solid #343849; border-radius: 8px; background: #141722; font-size: 10px; }
+.clipwing-format-field small { color: #8f96a5; font-size: 9px; }
+.clipwing-entry-progress { display: grid; gap: 5px; max-width: 540px; margin-top: 5px; }
+.clipwing-entry-progress > div { display: flex; justify-content: space-between; gap: 8px; color: #8f96a5; font-size: 9px; }
+.clipwing-entry-progress > div span:last-child { color: #b8f36b; font-variant-numeric: tabular-nums; }
+.clipwing-entry-progress progress { width: 100%; height: 5px; margin: 0; }
+.clipwing-entry-actions { display: flex; flex: 0 0 auto; align-items: center; padding-top: 20px; }
+@media (max-width: 620px) {
+  .clipwing-import-panel { padding: 15px; margin: 22px 0 32px; }
+  .clipwing-entry { align-items: flex-start; flex-direction: column; }
+  .clipwing-entry > .button { margin-left: 33px; }
+  .clipwing-entry-actions { padding-top: 0; margin-left: 33px; }
+}

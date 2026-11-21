@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.media import router as media_router
-from app.api.analyses import router as analyses_router
+from app.api.clipwing import router as clipwing_router
 from app.api.clips import router as clips_router
 from app.api.captions import router as captions_router
 from app.api.projects import router as projects_router
@@ -14,7 +14,9 @@ from app.api.renders import router as renders_router
 from app.api.layout_images import router as layout_images_router
 from app.core.config import settings
 from app.db.database import initialize_database
+from app.services.clipwing_queue import recover_queued_imports
 from app.services.analysis_queue import recover_queued_analyses
+from app.services.project_store import interrupt_legacy_gemini_runs
 from app.services.transcription_queue import recover_queued_transcriptions
 from app.services.render_queue import recover_queued_renders
 
@@ -23,6 +25,8 @@ from app.services.render_queue import recover_queued_renders
 async def lifespan(_: FastAPI):
     settings.ensure_directories()
     initialize_database()
+    recover_queued_imports()
+    interrupt_legacy_gemini_runs()
     recover_queued_analyses()
     recover_queued_transcriptions()
     recover_queued_renders()
@@ -32,7 +36,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="CLIPRA.AI API",
     version="0.4.0",
-    description="Local CLIPRA media, highlight analysis, clip editing, and local captions.",
+    description="Local CLIPRA media importing, Clipwing clip extraction, editing, and captions.",
     lifespan=lifespan,
 )
 
@@ -62,7 +66,7 @@ def health_check() -> dict[str, str]:
 
 app.include_router(projects_router)
 app.include_router(media_router)
-app.include_router(analyses_router)
+app.include_router(clipwing_router)
 app.include_router(clips_router)
 app.include_router(captions_router)
 app.include_router(renders_router)

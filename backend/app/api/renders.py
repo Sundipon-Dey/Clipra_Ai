@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 
 from app.models.schemas import RenderApproval, RenderJobOut
 from app.services.clip_store import get_clip
-from app.services.project_store import utc_now
+from app.services.project_store import get_media_record, utc_now
 from app.services.range_stream import byte_range, stream_file
 from app.services.render_queue import enqueue
 from app.services.render_snapshot import capture
@@ -23,17 +23,24 @@ router = APIRouter(tags=["clip exports"])
 
 def _out(job: dict, current_hash: str | None = None) -> RenderJobOut:
     is_current = bool(current_hash and job["config_hash"] == current_hash and job["status"] == "completed")
+    snapshot = json.loads(job["snapshot_json"])
+    resolution = str(snapshot.get("profile", {}).get("resolution", "1080"))
     return RenderJobOut(**{key: job[key] for key in ("id", "clip_id", "project_id", "kind", "status", "config_hash", "progress", "stage", "error_message", "output_bytes", "version_number", "approved_at", "created_at", "completed_at")},
                         stream_url=f"/api/render-jobs/{job['id']}/stream" if job.get("output_relative_path") else None,
                         download_url=f"/api/render-jobs/{job['id']}/download" if job.get("output_relative_path") and job["kind"] == "export" else None,
-                        current=is_current)
+                        current=is_current, resolution=resolution if resolution in {"1080", "1440"} else "1080")
 
 
 @router.post("/api/clips/{clip_id}/exports", response_model=RenderJobOut, status_code=202)
 def post_export(clip_id: str, payload: RenderApproval):
     if not payload.approved:
         raise HTTPException(400, "Explicit approval is required before export.")
-    snapshot = capture(clip_id, payload.caption_track_id)
+    clip = get_clip(clip_id)
+    if payload.resolution == "1440" and clip:
+        media = get_media_record(clip["media_id"])
+        if not media or min(int(media["width"]), int(media["height"])) < 1440:
+            raise HTTPException(422, "1440p export is available only when the original upload is 1440p or higher.")
+    snapshot = capture(clip_id, payload.caption_track_id, payload.resolution)
     if not snapshot:
         if payload.caption_track_id and get_clip(clip_id):
             raise HTTPException(409, "The selected caption track is stale or unavailable. Refresh it before rendering.")
@@ -49,9 +56,14 @@ def post_export(clip_id: str, payload: RenderApproval):
 def render_history(clip_id: str, caption_track_id: str | None = None):
     if not get_clip(clip_id):
         raise HTTPException(404, "Draft clip not found.")
-    snapshot = capture(clip_id, caption_track_id)
-    current_hash = digest(snapshot) if snapshot else None
-    return [_out(job, current_hash) for job in list_for_clip(clip_id)]
+    jobs = list_for_clip(clip_id)
+    result = []
+    for job in jobs:
+        saved = json.loads(job["snapshot_json"])
+        profile = str(saved.get("profile", {}).get("resolution", "1080"))
+        current = capture(clip_id, caption_track_id, profile)
+        result.append(_out(job, digest(current) if current else None))
+    return result
 
 
 @router.get("/api/render-jobs/{job_id}", response_model=RenderJobOut)
@@ -62,7 +74,9 @@ def render_status(job_id: str, caption_track_id: str | None = None):
     if caption_track_id is None:
         saved_track = json.loads(job["snapshot_json"]).get("caption_track")
         caption_track_id = saved_track.get("id") if saved_track else None
-    snapshot = capture(job["clip_id"], caption_track_id)
+    saved = json.loads(job["snapshot_json"])
+    profile = str(saved.get("profile", {}).get("resolution", "1080"))
+    snapshot = capture(job["clip_id"], caption_track_id, profile)
     return _out(job, digest(snapshot) if snapshot else None)
 
 

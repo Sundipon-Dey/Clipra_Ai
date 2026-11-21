@@ -53,7 +53,7 @@ export default function SplitLayoutControls({ clipId, value, active, onActive, o
       </select>
     </label>
     <label className="editor-field slider-field">{active === 'top' ? 'Top zoom' : 'Bottom zoom'} <strong>{section.zoom.toFixed(2)}×</strong>
-      <input aria-label={`${active === 'top' ? 'Top' : 'Bottom'} zoom`} type="range" min="1" max="3" step="0.01" value={section.zoom} onChange={(event) => updateSection({ zoom: Number(event.target.value) })}/>
+      <input aria-label={`${active === 'top' ? 'Top' : 'Bottom'} zoom`} type="range" min="1" max="10" step="0.01" value={section.zoom} onChange={(event) => updateSection({ zoom: Number(event.target.value) })}/>
     </label>
     <div className="focus-coordinates"><label>{active === 'top' ? 'Top X / focus' : 'Bottom X / focus'} <input aria-label={`${active === 'top' ? 'Top' : 'Bottom'} horizontal position`} type="number" min="0" max="1" step="0.01" value={section.position_x.toFixed(2)} onChange={(event) => updateSection({ position_x: Number(event.target.value) })}/></label><label>{active === 'top' ? 'Top Y / focus' : 'Bottom Y / focus'} <input aria-label={`${active === 'top' ? 'Top' : 'Bottom'} vertical position`} type="number" min="0" max="1" step="0.01" value={section.position_y.toFixed(2)} onChange={(event) => updateSection({ position_y: Number(event.target.value) })}/></label></div>
     {section.framing_mode === 'fit' && <label className="editor-field">Section background<input aria-label={`${active} fit background color`} type="color" value={section.fit_background_color} onChange={(event) => updateSection({ fit_background_color: event.target.value })}/></label>}</>}

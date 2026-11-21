@@ -2,17 +2,16 @@ import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEven
 import {
   ArrowLeft, ArrowUpFromLine, Check, ChevronRight, Clapperboard, Clock3, Film,
   FolderOpen, HardDrive, LoaderCircle, Plus, RefreshCw, ShieldCheck, Video,
-  X, XCircle, Sparkles, Trash2,
+  X, XCircle, Trash2,
 } from 'lucide-react'
 import {
-  createProject, deleteProject, deleteClip, getAnalysis, getAnalysisHistory, getProject, getProjects, startAnalysis, uploadVideo,
-  type AnalysisRun, type Health, type MediaAsset, type Project, type ProjectDetail,
+  createProject, deleteProject, deleteClip, getProject, getProjects, uploadVideo,
+  type ClipwingEntry, type Health, type MediaAsset, type Project, type ProjectDetail,
 } from './api'
 import MediaPlayer from './MediaPlayer'
-import AnalysisReview from './AnalysisReview'
-import AnalysisConsentModal from './AnalysisConsentModal'
+import ClipwingImportPanel from './ClipwingImportPanel'
 import ClipEditor from './ClipEditor'
-import { createCandidateClip, createManualClip, getClips, type DraftClip, type HighlightCandidate } from './api'
+import { createManualClip, getClips, type DraftClip } from './api'
 
 type UploadItem = {
   id: string
@@ -68,15 +67,10 @@ export default function App() {
   const [uploading, setUploading] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [activeMedia, setActiveMedia] = useState<MediaAsset | null>(null)
-  const [analysisHistory, setAnalysisHistory] = useState<Record<string, AnalysisRun[]>>({})
   const [clipsByMedia, setClipsByMedia] = useState<Record<string, DraftClip[]>>({})
   const [editingClip, setEditingClip] = useState<{ media: MediaAsset; clip: DraftClip } | null>(null)
-  const [pendingAnalysisMedia, setPendingAnalysisMedia] = useState<MediaAsset | null>(null)
-  const [analysisStarting, setAnalysisStarting] = useState(false)
   const [geminiConfigured, setGeminiConfigured] = useState(false)
   const [geminiModel, setGeminiModel] = useState('gemini-3.5-flash-lite')
-  const [geminiFileLimit, setGeminiFileLimit] = useState(2 * 1024 ** 3)
-  const [activePreviewRange, setActivePreviewRange] = useState<{ startSeconds: number; endSeconds: number } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const refreshProjects = useCallback(async () => {
@@ -107,7 +101,6 @@ export default function App() {
         setUploadLimit(Number(healthData.max_upload_bytes) || uploadLimit)
         setGeminiConfigured(healthData.gemini_configured === 'true')
         setGeminiModel(healthData.gemini_model)
-        setGeminiFileLimit(Number(healthData.gemini_file_max_bytes) || geminiFileLimit)
         setConnection('connected')
         setPageError(null)
         const result = await getProjects()
@@ -124,36 +117,12 @@ export default function App() {
 
   useEffect(() => {
     if (!activeProject) return
-    let cancelled = false
     for (const media of activeProject.media) {
-      void getAnalysisHistory(media.id).then((runs) => {
-        if (!cancelled) setAnalysisHistory((current) => ({ ...current, [media.id]: runs }))
-      }).catch(() => undefined)
       void getClips(media.id).then((clips) => {
-        if (!cancelled) setClipsByMedia((current) => ({ ...current, [media.id]: clips }))
+        setClipsByMedia((current) => ({ ...current, [media.id]: clips }))
       }).catch(() => undefined)
     }
-    return () => { cancelled = true }
   }, [activeProject?.id, activeProject?.media.map((media) => media.id).join(',')])
-
-  useEffect(() => {
-    const activeRuns = Object.values(analysisHistory).flat().filter((run) => ['queued', 'uploading', 'processing_file', 'analyzing'].includes(run.status))
-    if (!activeRuns.length) return
-    let cancelled = false
-    const timer = window.setTimeout(async () => {
-      const results = await Promise.all(activeRuns.map((run) => getAnalysis(run.id).catch(() => null)))
-      if (cancelled) return
-      setAnalysisHistory((current) => {
-        const next = { ...current }
-        for (const result of results) {
-          if (!result) continue
-          next[result.media_id] = (next[result.media_id] ?? []).map((run) => run.id === result.id ? result : run)
-        }
-        return next
-      })
-    }, 1800)
-    return () => { cancelled = true; window.clearTimeout(timer) }
-  }, [analysisHistory])
 
   async function openProject(project: Project) {
     setPageError(null)
@@ -250,7 +219,6 @@ export default function App() {
       setUploadLimit(Number(health.max_upload_bytes) || uploadLimit)
       setGeminiConfigured(health.gemini_configured === 'true')
       setGeminiModel(health.gemini_model)
-      setGeminiFileLimit(Number(health.gemini_file_max_bytes) || geminiFileLimit)
       setConnection('connected')
       await refreshProjects()
     } catch (error) {
@@ -261,39 +229,19 @@ export default function App() {
 
   const totalMedia = projects.reduce((total, project) => total + project.media_count, 0)
 
-  function rememberAnalysis(run: AnalysisRun) {
-    setAnalysisHistory((current) => {
-      const prior = current[run.media_id] ?? []
-      return { ...current, [run.media_id]: [run, ...prior.filter((item) => item.id !== run.id)] }
-    })
-  }
+  const activeProjectId = activeProject?.id
+  const refreshActiveProject = useCallback(() => { if (activeProjectId) void refreshProject(activeProjectId) }, [activeProjectId, refreshProject])
 
-  async function confirmAnalysis() {
-    if (!pendingAnalysisMedia || analysisStarting) return
-    const media = pendingAnalysisMedia
-    const force = true
-    setAnalysisStarting(true)
+  async function openClipwingEntry(entry: ClipwingEntry) {
+    if (!activeProject || !entry.media_id || !entry.clip_id) return
     try {
-      rememberAnalysis(await startAnalysis(media.id, force))
-      setPendingAnalysisMedia(null)
-    } catch (error) {
-      setPageError(error instanceof Error ? error.message : 'Gemini analysis could not be started.')
-    } finally {
-      setAnalysisStarting(false)
-    }
-  }
-
-  function previewCandidate(media: MediaAsset, startSeconds: number, endSeconds: number) {
-    setActivePreviewRange({ startSeconds, endSeconds })
-    setActiveMedia(media)
-  }
-
-  async function addCandidateClip(media: MediaAsset, candidate: HighlightCandidate) {
-    try {
-      const clip = await createCandidateClip(candidate.id)
-      setClipsByMedia((current) => ({ ...current, [media.id]: [clip, ...(current[media.id] ?? []).filter((item) => item.id !== clip.id)] }))
+      const latest = await getProject(activeProject.id)
+      setActiveProject(latest)
+      const media = latest.media.find((item) => item.id === entry.media_id)
+      const clip = (await getClips(entry.media_id)).find((item) => item.id === entry.clip_id)
+      if (!media || !clip) throw new Error('The extracted clip is not available in this project.')
       setEditingClip({ media, clip })
-    } catch (error) { setPageError(error instanceof Error ? error.message : 'Could not create a draft clip.') }
+    } catch (error) { setPageError(error instanceof Error ? error.message : 'Could not open the extracted clip.') }
   }
 
   async function addManualClip(media: MediaAsset) {
@@ -357,9 +305,10 @@ export default function App() {
             </section>
           )}
 
+          <ClipwingImportPanel projectId={activeProject.id} onOpenClip={(entry) => void openClipwingEntry(entry)} onProjectChanged={refreshActiveProject}/>
+
           <section className="library-section">
-            <div className="section-heading"><div><p className="eyebrow">MEDIA LIBRARY</p><h2>Imported videos</h2></div>{activeProject.media.length > 0 && <span className="result-count">{activeProject.media.length} items</span>}</div>
-            {activeProject.media.length > 0 && <aside className="gemini-notice"><span className="notice-icon"><Sparkles size={16} /></span><div><strong>Gemini video analysis</strong><p>Analysis uploads a temporary managed copy of the selected video to Google. Usage is subject to your Gemini API quota and may incur charges depending on your Google AI Studio plan. Google Files API uploads expire automatically after 48 hours.</p><small>{geminiConfigured ? `Configured model: ${geminiModel} · maximum file size ${formatSize(geminiFileLimit)}` : 'Add GEMINI_API_KEY to backend/.env to enable analysis.'}</small></div></aside>}
+            <div className="section-heading"><div><p className="eyebrow">MEDIA LIBRARY</p><h2>Imported videos and extracted clips</h2></div>{activeProject.media.length > 0 && <span className="result-count">{activeProject.media.length} items</span>}</div>
             {activeProject.media.length === 0 ? (
               <div className="empty-library"><span className="empty-icon"><FolderOpen size={22} /></span><h3>No videos in this project yet</h3><p>Import authorized footage to see FFprobe metadata and preview your source clips here.</p><button className="button secondary" onClick={() => fileInput.current?.click()}><Plus size={15} /> Select video files</button></div>
             ) : (
@@ -370,9 +319,8 @@ export default function App() {
                     <div className="media-meta"><span><Clock3 size={13} />{formatDuration(media.duration_seconds)}</span><span><Film size={13} />{media.width} × {media.height}</span><span><RefreshCw size={12} />{formatFrameRate(media.frame_rate_decimal, media.frame_rate)}</span><span><HardDrive size={13} />{formatSize(media.size_bytes)}</span></div>
                     <div className="codec-line"><span>Video <b>{media.video_codec}</b></span><span>Audio <b>{media.audio_codec ?? 'No audio'}</b></span><span title={media.container_format}>Container <b>{formatContainer(media)}</b></span></div>
                   </div>
-                  <div className="media-trailing"><div className={`proxy-state ${media.preview_status}`}><i />{media.preview_status === 'ready' ? 'Preview copy ready' : media.preview_status === 'processing' ? 'Preparing preview' : media.preview_status === 'failed' ? 'Preview failed' : 'Source ready'}</div><button className="button secondary small" onClick={() => { setActivePreviewRange(null); setActiveMedia(media) }}>Open preview</button><button className="button secondary small" onClick={() => void addManualClip(media)}>New clip</button></div>
+                  <div className="media-trailing"><div className={`proxy-state ${media.preview_status}`}><i />{media.preview_status === 'ready' ? 'Preview copy ready' : media.preview_status === 'processing' ? 'Preparing preview' : media.preview_status === 'failed' ? 'Preview failed' : 'Source ready'}</div><button className="button secondary small" onClick={() => setActiveMedia(media)}>Open preview</button><button className="button secondary small" onClick={() => void addManualClip(media)}>New clip</button></div>
                   <div className="draft-clip-list"><div className="draft-list-heading"><strong>Draft clips</strong><span>{(clipsByMedia[media.id] ?? []).length}</span></div>{(clipsByMedia[media.id] ?? []).map((clip) => <div className="draft-clip-row" key={clip.id}><button className="draft-open" onClick={() => setEditingClip({ media, clip })}><span><strong>{clip.title}</strong><small>{formatDuration(clip.start_seconds)}–{formatDuration(clip.end_seconds)} · {clip.framing_mode.replaceAll('_', ' ')}</small></span><span className={`mini-job ${clip.framing_status}`}>{clip.framing_status === 'pending' ? 'Suggesting focal point' : clip.framing_status === 'completed' ? 'Smart Crop ready' : 'Draft'}</span></button><button className="button secondary small" aria-label={`Delete draft ${clip.title}`} onClick={async () => { if (!window.confirm(`Delete draft “${clip.title}” and its captions?`)) return; try { await deleteClip(clip.id); setClipsByMedia((current) => ({ ...current, [media.id]: (current[media.id] ?? []).filter((item) => item.id !== clip.id) })) } catch (error) { window.alert(error instanceof Error ? error.message : 'Could not delete draft.') } }}>Delete</button></div>)}</div>
-                  <AnalysisReview media={media} runs={analysisHistory[media.id] ?? []} geminiConfigured={geminiConfigured} onAnalyze={() => setPendingAnalysisMedia(media)} onPreview={(start, end) => previewCandidate(media, start, end)} onCreateClip={(candidate) => void addCandidateClip(media, candidate)} />
                 </article>)}
               </div>
             )}
@@ -408,8 +356,7 @@ export default function App() {
         </section>
       </div>}
 
-      {activeMedia && <MediaPlayer key={activeMedia.id + '-' + (activePreviewRange?.startSeconds ?? 'full')} media={activeMedia} previewRange={activePreviewRange} onClose={() => { setActiveMedia(null); setActivePreviewRange(null) }} onMediaUpdated={updateActiveMedia} />}
-      {pendingAnalysisMedia && <AnalysisConsentModal media={pendingAnalysisMedia} model={geminiModel} maxBytes={geminiFileLimit} configured={geminiConfigured} busy={analysisStarting} onCancel={() => setPendingAnalysisMedia(null)} onConfirm={() => void confirmAnalysis()} />}
+      {activeMedia && <MediaPlayer key={activeMedia.id} media={activeMedia} onClose={() => setActiveMedia(null)} onMediaUpdated={updateActiveMedia} />}
     </main>
   )
 }

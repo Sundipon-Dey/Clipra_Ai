@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, Download, LoaderCircle, Play } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Download, LoaderCircle, Play } from 'lucide-react'
 import { getRenderHistory, mediaUrl, requestClipExport, type DraftClip, type RenderJob } from './api'
 
-type Props = { clip: DraftClip; captionTrackId: string | null; onEdit: () => void }
+type Props = { clip: DraftClip; captionTrackId: string | null; sourceWidth: number; sourceHeight: number; onEdit: () => void }
 const active = (job: RenderJob) => job.status === 'queued' || job.status === 'processing'
 
-export default function ClipRenderWorkflow({ clip, captionTrackId, onEdit }: Props) {
+export default function ClipRenderWorkflow({ clip, captionTrackId, sourceWidth, sourceHeight, onEdit }: Props) {
   const [jobs, setJobs] = useState<RenderJob[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [resolution, setResolution] = useState<'1080' | '1440'>('1080')
+  const canExport1440 = Math.min(sourceWidth, sourceHeight) >= 1440
   const reload = useCallback(async () => setJobs(await getRenderHistory(clip.id, captionTrackId)), [clip.id, captionTrackId])
   useEffect(() => { void reload().catch((e) => setError(e.message)) }, [reload])
   useEffect(() => {
@@ -23,7 +25,7 @@ export default function ClipRenderWorkflow({ clip, captionTrackId, onEdit }: Pro
   const nextVersion = Math.max(0, ...exportJobs.map((job) => job.version_number ?? 0)) + 1
   const startExport = async () => {
     setBusy(true); setError('')
-    try { const job = await requestClipExport(clip.id, captionTrackId); setJobs((current) => [job, ...current]) }
+    try { const job = await requestClipExport(clip.id, captionTrackId, resolution); setJobs((current) => [job, ...current]) }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not start the export.') }
     finally { setBusy(false) }
   }
@@ -32,12 +34,13 @@ export default function ClipRenderWorkflow({ clip, captionTrackId, onEdit }: Pro
     <div className="render-workspace-body">
       <div className="render-review-column">
         {latestCompletedExport?.stream_url ? <video key={latestCompletedExport.id} className="render-review-video" controls playsInline src={mediaUrl(latestCompletedExport.stream_url)} /> : <div className="render-review-empty"><Play size={26}/><p>Your exported video will appear here when rendering is complete.</p></div>}
+        <label className="editor-field export-resolution-field">Export resolution<div className="layout-select-wrap"><select aria-label="Export resolution" value={resolution} onChange={(event) => setResolution(event.target.value as '1080' | '1440')}><option value="1080">1080p · 1080 × 1920</option><option value="1440" disabled={!canExport1440}>1440p · 1440 × 2560{canExport1440 ? '' : ' · source below 1440p'}</option></select><ChevronDown size={16} aria-hidden="true"/></div></label>
         <div className="render-actions"><button className="button primary" disabled={busy || Boolean(latestExport)} onClick={() => void startExport()}>Export V{nextVersion}</button></div>
-        <p className="render-current-note">Click Export to approve and render the current saved settings. Exports use 1080 × 1920 at H.264 CRF 18. Each new export is saved as a separate version.</p>
+        <p className="render-current-note">Original upload: {sourceWidth} × {sourceHeight}. Exports use H.264 CRF 18. 1440p is enabled only when the original upload is at least 1440p; a vertical crop may be upscaled. Each version keeps its own resolution and is saved separately.</p>
         {latestExport && <JobProgress job={latestExport} label={`Export V${latestExport.version_number ?? ''}`}/>}
         {error && <p role="alert" className="framing-error">{error}</p>}
       </div>
-      <aside className="render-history"><h3>Export versions</h3>{exports.length ? exports.map((job) => <article className="render-version" key={job.id}><div><strong>V{job.version_number}</strong><small>{new Date(job.completed_at ?? job.created_at).toLocaleString()}</small></div><div className="render-version-actions"><a className="button secondary small" href={mediaUrl(job.stream_url!)} target="_blank" rel="noreferrer">Play</a><a className="button secondary small" href={mediaUrl(job.download_url!)}><Download size={13}/> Download</a></div></article>) : <p className="render-history-empty">Completed exports will appear here. Each version is kept separately.</p>}{jobs.filter((job) => job.kind === 'export' && job.status === 'failed').map((job) => <p className="framing-error" key={job.id}>V{job.version_number} failed: {job.error_message}</p>)}</aside>
+      <aside className="render-history"><h3>Export versions</h3>{exports.length ? exports.map((job) => <article className="render-version" key={job.id}><div><strong>V{job.version_number} · {job.resolution}p</strong><small>{new Date(job.completed_at ?? job.created_at).toLocaleString()}</small></div><div className="render-version-actions"><a className="button secondary small" href={mediaUrl(job.stream_url!)} target="_blank" rel="noreferrer">Play</a><a className="button secondary small" href={mediaUrl(job.download_url!)}><Download size={13}/> Download</a></div></article>) : <p className="render-history-empty">Completed exports will appear here. Each version is kept separately.</p>}{jobs.filter((job) => job.kind === 'export' && job.status === 'failed').map((job) => <p className="framing-error" key={job.id}>V{job.version_number} failed: {job.error_message}</p>)}</aside>
     </div>
   </section></main>
 }

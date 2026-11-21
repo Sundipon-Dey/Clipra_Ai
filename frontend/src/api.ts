@@ -31,18 +31,9 @@ export type Project = {
 
 export type ProjectDetail = Project & { media: MediaAsset[] }
 export type Health = { status: string; service: string; version: string; max_upload_bytes: string; max_files_per_import: string; gemini_configured: string; gemini_model: string; gemini_file_max_bytes: string }
-
-export type HighlightCandidate = {
-  id: string; ordinal: number; start_seconds: number; end_seconds: number; title: string
-  description: string; category: string; reasoning: string; confidence: number | null
-}
-
-export type AnalysisRun = {
-  id: string; project_id: string; media_id: string; status: string; model_name: string
-  prompt_version: string; created_at: string; started_at: string | null; completed_at: string | null
-  error_code: string | null; error_message: string | null; cleanup_pending: boolean
-  candidates: HighlightCandidate[]
-}
+export type ClipwingFormat = { format_id: string; label: string; width: number | null; height: number; ext: string; video_codec: string; audio_codec: string | null; fps: number | null; filesize_bytes: number | null }
+export type ClipwingEntry = { id: string; ordinal: number; title: string; start_seconds: number; end_seconds: number; score: number | null; transcript: string | null; caption_source: 'none' | 'youtube'; selected_format_id: string | null; status: 'queued' | 'cutting' | 'ready' | 'failed' | 'interrupted'; progress: number; error_message: string | null; media_id: string | null; clip_id: string | null; video_url: string }
+export type ClipwingImport = { id: string; project_id: string; status: 'queued' | 'downloading' | 'cutting' | 'completed' | 'completed_with_errors' | 'failed' | 'interrupted'; stage: string; progress: number; video_title: string | null; video_duration_seconds: number | null; formats: ClipwingFormat[]; error_message: string | null; created_at: string; updated_at: string; entries: ClipwingEntry[] }
 
 export type FocalPoint = { time_seconds: number; x: number; y: number; confidence: number | null }
 export type SplitSection = { framing_mode: 'crop' | 'fit'; zoom: number; position_x: number; position_y: number; fit_background_color: string }
@@ -71,7 +62,7 @@ export type CaptionStyle = { name: string; font_family: string; font_weight: num
 export type CaptionTrack = { id: string; clip_id: string; transcription_run_id: string | null; name: string; language: string; preset_id: string; style_version: number; style: CaptionStyle; grouping: { max_words_per_line: number; max_lines: number; max_cue_seconds: number; pause_seconds: number; display_mode?: 'phrase' | 'one_word' }; position_x: number; position_y: number; safe_zone_profile: 'shorts' | 'reels' | 'tiktok' | 'facebook'; timing_offset_seconds: number; boundary_start_seconds: number; boundary_end_seconds: number; stale: boolean; created_at: string; updated_at: string; segments: CaptionSegment[] }
 export type TranscriptionRun = { id: string; clip_id: string; media_id: string; status: string; model_id: string; language: string; device_profile: 'cpu:int8'; clip_start_seconds: number; clip_end_seconds: number; started_at: string | null; completed_at: string | null; error_code: string | null; error_message: string | null; created_at: string; caption_track_id: string | null }
 
-export type RenderJob = { id: string; clip_id: string; project_id: string; kind: 'export'; status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'interrupted' | 'stale'; config_hash: string; progress: number; stage: string; error_message: string | null; output_bytes: number | null; version_number: number | null; approved_at: string | null; created_at: string; completed_at: string | null; stream_url: string | null; download_url: string | null; current: boolean }
+export type RenderJob = { id: string; clip_id: string; project_id: string; kind: 'export'; status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'interrupted' | 'stale'; config_hash: string; progress: number; stage: string; error_message: string | null; output_bytes: number | null; version_number: number | null; approved_at: string | null; created_at: string; completed_at: string | null; stream_url: string | null; download_url: string | null; current: boolean; resolution: '1080' | '1440' }
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000').replace(/\/$/, '')
 
@@ -104,6 +95,11 @@ export const createProject = (name: string) =>
     body: JSON.stringify({ name }),
   })
 export const deleteProject = (id: string) => request<void>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
+export const startClipwingImport = (projectId: string, analysisText: string, confirmRights: boolean) => request<ClipwingImport>(`/api/projects/${encodeURIComponent(projectId)}/clipwing-imports`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis_text: analysisText, confirm_rights: confirmRights }) })
+export const getClipwingImports = (projectId: string) => request<ClipwingImport[]>(`/api/projects/${encodeURIComponent(projectId)}/clipwing-imports`)
+export const getClipwingImport = (projectId: string, importId: string) => request<ClipwingImport>(`/api/projects/${encodeURIComponent(projectId)}/clipwing-imports/${encodeURIComponent(importId)}`)
+export const downloadClipwingEntry = (projectId: string, importId: string, entryId: string, formatId: string) => request<ClipwingImport>(`/api/projects/${encodeURIComponent(projectId)}/clipwing-imports/${encodeURIComponent(importId)}/entries/${encodeURIComponent(entryId)}/download`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format_id: formatId }) })
+export const refreshClipwingDetails = (projectId: string, importId: string) => request<ClipwingImport>(`/api/projects/${encodeURIComponent(projectId)}/clipwing-imports/${encodeURIComponent(importId)}/refresh`, { method: 'POST' })
 
 export function uploadVideo(projectId: string, file: File, onProgress: (progress: number) => void): Promise<MediaAsset> {
   return new Promise((resolve, reject) => {
@@ -142,24 +138,11 @@ export function uploadVideo(projectId: string, file: File, onProgress: (progress
 export const requestPreview = (id: string) =>
   request<{ media: MediaAsset; message: string }>(`/api/media/${encodeURIComponent(id)}/preview`, { method: 'POST' })
 
-export const getAnalysisHistory = (mediaId: string) =>
-  request<AnalysisRun[]>(`/api/media/${encodeURIComponent(mediaId)}/analyses`)
-
-export const getAnalysis = (analysisId: string) =>
-  request<AnalysisRun>(`/api/analyses/${encodeURIComponent(analysisId)}`)
-
-export const startAnalysis = (mediaId: string, force = false) =>
-  request<AnalysisRun>(`/api/media/${encodeURIComponent(mediaId)}/analyses`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force }),
-  })
-
 export const getClips = (mediaId: string) => request<DraftClip[]>(`/api/media/${encodeURIComponent(mediaId)}/clips`)
 export const getClip = (clipId: string) => request<DraftClip>(`/api/clips/${encodeURIComponent(clipId)}`)
 export const deleteClip = (id: string) => request<void>(`/api/clips/${encodeURIComponent(id)}`, { method: 'DELETE' })
 export const createManualClip = (mediaId: string, title: string, startSeconds: number, endSeconds: number) =>
   request<DraftClip>(`/api/media/${encodeURIComponent(mediaId)}/clips`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, start_seconds: startSeconds, end_seconds: endSeconds }) })
-export const createCandidateClip = (candidateId: string) =>
-  request<DraftClip>(`/api/analysis-candidates/${encodeURIComponent(candidateId)}/clips`, { method: 'POST' })
 export const saveClip = (clip: DraftClip, fields: Partial<DraftClip>) =>
   request<DraftClip>(`/api/clips/${encodeURIComponent(clip.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) })
 
@@ -185,7 +168,7 @@ export const updateCaptionTrack = (id: string, fields: Partial<CaptionTrack> & {
 export const updateCaptionWord = (id: string, text: string) => request<CaptionTrack>(`/api/caption-words/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
 export const reflowCaptionTrack = (id: string, maxWords: number, maxLines: number) => request<CaptionTrack>(`/api/caption-tracks/${encodeURIComponent(id)}/reflow`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ max_words_per_line: maxWords, max_lines: maxLines }) })
 
-export const requestClipExport = (id: string, captionTrackId: string | null) => request<RenderJob>(`/api/clips/${encodeURIComponent(id)}/exports`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approved: true, caption_track_id: captionTrackId }) })
+export const requestClipExport = (id: string, captionTrackId: string | null, resolution: '1080' | '1440') => request<RenderJob>(`/api/clips/${encodeURIComponent(id)}/exports`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approved: true, caption_track_id: captionTrackId, resolution }) })
 export const getRenderHistory = (id: string, captionTrackId: string | null) => request<RenderJob[]>(`/api/clips/${encodeURIComponent(id)}/render-jobs${captionTrackId ? `?caption_track_id=${encodeURIComponent(captionTrackId)}` : ''}`)
 export const getRenderJob = (id: string) => request<RenderJob>(`/api/render-jobs/${encodeURIComponent(id)}`)
 

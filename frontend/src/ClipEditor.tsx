@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertCircle, Crop, LoaderCircle, Play, Save, Sparkles, Volume2, VolumeX, X } from 'lucide-react'
+import { AlertCircle, ChevronDown, Crop, LoaderCircle, Play, Save, Sparkles, Volume2, VolumeX, X } from 'lucide-react'
 import { getClip, layoutImageUrl, mediaUrl, requestFramingSuggestion, requestPreview, saveClip, updateCaptionTrack, type CaptionTrack, type DraftClip, type LayoutImage, type MediaAsset, type SplitLayout } from './api'
 import CaptionOverlay from './CaptionOverlay'
 import CaptionPanel from './CaptionPanel'
@@ -184,11 +184,13 @@ export default function ClipEditor({ media, clip: initial, geminiConfigured, mod
         context.save(); context.filter = `blur(${clip.blur_strength}px)`
         context.drawImage(video, (cw - dw) / 2, (ch - dh) / 2, dw, dh); context.restore()
         const fit = Math.min(cw / width, ch / height)
-        context.drawImage(video, (cw - width * fit) / 2, (ch - height * fit) / 2, width * fit, height * fit)
+        const frontWidth = width * fit * clip.manual_zoom, frontHeight = height * fit * clip.manual_zoom
+        context.drawImage(video, (cw - frontWidth) / 2, (ch - frontHeight) / 2, frontWidth, frontHeight)
       } else if (mode === 'fit') {
         context.fillStyle = clip.fit_background_color; context.fillRect(0, 0, cw, ch)
         const fit = Math.min(cw / width, ch / height)
-        context.drawImage(video, (cw - width * fit) / 2, (ch - height * fit) / 2, width * fit, height * fit)
+        const frontWidth = width * fit * clip.manual_zoom, frontHeight = height * fit * clip.manual_zoom
+        context.drawImage(video, (cw - frontWidth) / 2, (ch - frontHeight) / 2, frontWidth, frontHeight)
       } else {
         const aspect = cw / ch
         let sw = Math.min(width, height * aspect), sh = sw / aspect
@@ -293,7 +295,7 @@ export default function ClipEditor({ media, clip: initial, geminiConfigured, mod
       .catch((error) => setSaveMessage(error instanceof Error ? error.message : 'Caption position could not be saved.'))
   }
 
-  if (renderWorkflow) return <ClipRenderWorkflow clip={clip} captionTrackId={captionTrack?.id ?? null} onEdit={() => { setRenderWorkflow(false); void getClip(clip.id).then((latest) => { setClip(latest); setSplitLayout(latest.split_layout); setStartText(formatInputSeconds(latest.start_seconds)); setEndText(formatInputSeconds(latest.end_seconds)) }).catch(() => undefined) }}/>
+  if (renderWorkflow) return <ClipRenderWorkflow clip={clip} captionTrackId={captionTrack?.id ?? null} sourceWidth={media.width} sourceHeight={media.height} onEdit={() => { setRenderWorkflow(false); void getClip(clip.id).then((latest) => { setClip(latest); setSplitLayout(latest.split_layout); setStartText(formatInputSeconds(latest.start_seconds)); setEndText(formatInputSeconds(latest.end_seconds)) }).catch(() => undefined) }}/>
 
   return <main className="clip-editor-backdrop clip-editor-page">
     <section className="clip-editor" aria-labelledby="clip-editor-title">
@@ -304,7 +306,7 @@ export default function ClipEditor({ media, clip: initial, geminiConfigured, mod
           <div className="boundary-controls"><label className="editor-field">Start (seconds)<input aria-label="Start (seconds)" aria-invalid={Boolean(boundaryInputError)} aria-describedby="clip-boundary-feedback" inputMode="decimal" type="text" value={startText} onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateBoundaryText('start_seconds', event.target.value)} onBlur={commitBoundaryText} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { setStartText(formatInputSeconds(clip.start_seconds)); setEndText(formatInputSeconds(clip.end_seconds)); setBoundaryMessage(null); event.currentTarget.blur() } }}/><small>{timeLabel(Number(startText) || 0)}</small></label><label className="editor-field">End (seconds)<input aria-label="End (seconds)" aria-invalid={Boolean(boundaryInputError)} aria-describedby="clip-boundary-feedback" inputMode="decimal" type="text" value={endText} onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateBoundaryText('end_seconds', event.target.value)} onBlur={commitBoundaryText} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { setStartText(formatInputSeconds(clip.start_seconds)); setEndText(formatInputSeconds(clip.end_seconds)); setBoundaryMessage(null); event.currentTarget.blur() } }}/><small>{timeLabel(Number(endText) || 0)}</small></label></div>
           <p id="clip-boundary-feedback" className={boundaryInputError || boundaryMessage ? 'boundary-feedback error' : 'boundary-feedback'} role={boundaryInputError || boundaryMessage ? 'alert' : undefined}>{boundaryInputError || boundaryMessage || `Enter seconds to three decimal places. Source duration: ${timeLabel(media.duration_seconds)}.`}</p>
           <div className="clip-duration"><span><Crop size={15}/> Clip duration</span><strong>{timeLabel(clip.end_seconds - clip.start_seconds)}</strong></div>
-          <label className="editor-field">Layout<select aria-label="Clip layout" value={clip.layout_type} onChange={(event) => update({ layout_type: event.target.value as DraftClip['layout_type'] })}><option value="original">Original Layout</option><option value="split_streamer_gameplay">Split-Screen Streamer + Gameplay</option></select></label>
+          <label className="editor-field layout-select-field">Layout<div className="layout-select-wrap"><select aria-label="Clip layout" value={clip.layout_type} onChange={(event) => update({ layout_type: event.target.value as DraftClip['layout_type'] })}><option value="original">Original Layout</option><option value="split_streamer_gameplay">Split-Screen Streamer + Gameplay</option></select><ChevronDown size={16} aria-hidden="true"/></div></label>
           {clip.layout_type === 'split_streamer_gameplay' && <div className="split-layout-section"><div className="framing-heading"><div><p className="eyebrow">SPLIT-SCREEN FRAMING</p><h3>Position each section</h3></div></div><SplitLayoutControls clipId={clip.id} value={splitLayout} active={activeSplitSection} onActive={setActiveSplitSection} onChange={changeSplitLayout} onImageUploaded={onLayoutImageUploaded}/></div>}
           <div className="framing-section"><div className="framing-heading"><div><p className="eyebrow">VERTICAL FRAMING</p><h3>Choose your composition</h3></div></div><div className="framing-options">{modes.map(([id, label]) => <button key={id} className={clip.framing_mode === id ? 'framing-option active' : 'framing-option'} onClick={() => update({ framing_mode: id })}>{label}</button>)}</div>
             {(clip.framing_mode === 'smart_crop' || clip.framing_mode === 'manual_crop') && <>
@@ -312,8 +314,9 @@ export default function ClipEditor({ media, clip: initial, geminiConfigured, mod
               <label className="manual-focus-toggle"><input type="checkbox" checked={manualOverride || clip.framing_mode === 'manual_crop'} onChange={(e) => { setManualOverride(e.target.checked); update({ manual_override_enabled: e.target.checked }) }}/> Use manual focal point</label>
               <div className="focus-coordinates"><label>X <input type="number" min="0" max="1" step="0.01" value={clip.manual_focus_x.toFixed(2)} onChange={(e) => update({ manual_focus_x: Number(e.target.value) })}/></label><label>Y <input type="number" min="0" max="1" step="0.01" value={clip.manual_focus_y.toFixed(2)} onChange={(e) => update({ manual_focus_y: Number(e.target.value) })}/></label></div>
             </>}
-            {clip.framing_mode === 'blurred_background' && <label className="editor-field slider-field">Background blur <strong>{clip.blur_strength}px</strong><input type="range" min="0" max="40" step="1" value={clip.blur_strength} onChange={(e) => update({ blur_strength: Number(e.target.value) })}/></label>}
-            {clip.framing_mode === 'fit' && <label className="editor-field">Fit background color<div className="color-picker-row"><span className="color-picker-swatch" style={{ backgroundColor: clip.fit_background_color }} aria-hidden="true"/><span className="color-picker-value"><strong>{clip.fit_background_color.toUpperCase()}</strong><small>Preview background</small></span><input aria-label="Fit background color" type="color" value={clip.fit_background_color} onChange={(e) => update({ fit_background_color: e.target.value })}/></div></label>}
+              {(clip.framing_mode === 'blurred_background' || clip.framing_mode === 'fit') && <label className="editor-field slider-field">Zoom <strong>{clip.manual_zoom.toFixed(2)}×</strong><input aria-label="Original layout zoom" type="range" min="1" max="3" step="0.01" value={clip.manual_zoom} onChange={(e) => update({ manual_zoom: Number(e.target.value) })}/></label>}
+              {clip.framing_mode === 'blurred_background' && <label className="editor-field slider-field">Background blur <strong>{clip.blur_strength}px</strong><input type="range" min="0" max="40" step="1" value={clip.blur_strength} onChange={(e) => update({ blur_strength: Number(e.target.value) })}/></label>}
+              {clip.framing_mode === 'fit' && <label className="editor-field">Fit background color<div className="color-picker-row"><span className="color-picker-swatch" style={{ backgroundColor: clip.fit_background_color }} aria-hidden="true"/><span className="color-picker-value"><strong>{clip.fit_background_color.toUpperCase()}</strong><small>Preview background</small></span><input aria-label="Fit background color" type="color" value={clip.fit_background_color} onChange={(e) => update({ fit_background_color: e.target.value })}/></div></label>}
           </div>
 
           <div className="smart-crop-card"><div className="smart-crop-top"><Sparkles size={16}/><div><strong>Smart Crop recommendation</strong><small>{clip.framing_status === 'pending' ? 'Analyzing selected still frames…' : clip.framing_status === 'completed' ? `Ready · ${clip.framing_model ?? model}` : clip.framing_status === 'failed' ? 'Recommendation failed' : 'Optional · manual controls always available'}</small></div>{clip.framing_status === 'pending' && <LoaderCircle className="spin" size={15}/>}</div>

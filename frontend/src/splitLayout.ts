@@ -9,7 +9,7 @@ export const DEFAULT_SPLIT_LAYOUT: SplitLayout = {
 export type SplitSectionKey = 'top' | 'bottom'
 
 export function splitSourceDrawRect(sourceWidth: number, sourceHeight: number, width: number, height: number, section: SplitLayout['top'] | SplitLayout['bottom']) {
-  const zoom = Math.max(1, Math.min(3, section.zoom))
+  const zoom = Math.max(1, Math.min(10, section.zoom))
   const virtualWidth = width * zoom, virtualHeight = height * zoom
   const scale = section.framing_mode === 'crop'
     ? Math.max(virtualWidth / sourceWidth, virtualHeight / sourceHeight)

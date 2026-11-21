@@ -33,11 +33,11 @@ def list_clips(media_id: str):
     return [_clip(row, points[row["id"]]) for row in rows]
 
 
-def create_clip(*, project_id: str, media_id: str, title: str, start: float, end: float, candidate_id: str | None = None):
+def create_clip(*, project_id: str, media_id: str, title: str, start: float, end: float):
     clip_id, now = str(uuid4()), utc_now()
     with connect() as db:
         db.execute("INSERT INTO clips(id,project_id,media_id,source_candidate_id,title,start_seconds,end_seconds,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
-                   (clip_id, project_id, media_id, candidate_id, title.strip(), start, end, now, now))
+                   (clip_id, project_id, media_id, None, title.strip(), start, end, now, now))
     return get_clip(clip_id)
 
 
@@ -94,9 +94,3 @@ def fail_framing(clip_id: str, *, code: str, message: str):
         db.execute("UPDATE clips SET framing_status='failed',framing_error_code=?,framing_error_message=?,framing_completed_at=?,updated_at=? WHERE id=?",
                    (code, message, utc_now(), utc_now(), clip_id))
     return get_clip(clip_id)
-
-
-def candidate_media(candidate_id: str):
-    with connect() as db:
-        return db.execute("""SELECT c.*, r.media_id, r.project_id FROM analysis_candidates c
-                            JOIN analysis_runs r ON r.id=c.analysis_id WHERE c.id=?""", (candidate_id,)).fetchone()
