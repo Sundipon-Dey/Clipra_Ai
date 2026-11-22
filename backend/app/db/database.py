@@ -283,7 +283,32 @@ def initialize_database() -> None:
                 UNIQUE(import_id, ordinal)
             );
             CREATE INDEX IF NOT EXISTS ix_clipwing_entries_import ON clipwing_entries(import_id, ordinal);
-            PRAGMA user_version = 10;
+            CREATE TABLE IF NOT EXISTS social_content_generations (
+                id TEXT PRIMARY KEY,
+                render_job_id TEXT NOT NULL REFERENCES render_jobs(id) ON DELETE RESTRICT,
+                status TEXT NOT NULL CHECK(status IN ('queued','uploading','processing_file','generating','completed','failed','interrupted')),
+                progress REAL NOT NULL DEFAULT 0 CHECK(progress BETWEEN 0 AND 1),
+                stage TEXT NOT NULL DEFAULT 'queued',
+                model_name TEXT NOT NULL,
+                prompt_version TEXT NOT NULL,
+                consent_at TEXT NOT NULL,
+                context_json TEXT NOT NULL,
+                packages_json TEXT,
+                edited_packages_json TEXT NOT NULL DEFAULT '{}',
+                error_code TEXT,
+                error_message TEXT,
+                remote_file_name TEXT,
+                remote_interaction_id TEXT,
+                cleanup_pending INTEGER NOT NULL DEFAULT 0 CHECK(cleanup_pending IN (0,1)),
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS ix_social_content_export ON social_content_generations(render_job_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS ix_social_content_queue ON social_content_generations(status, created_at);
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_social_content_active_per_export
+                ON social_content_generations(render_job_id) WHERE status IN ('queued','uploading','processing_file','generating');
+            PRAGMA user_version = 12;
             """
         )
         clip_columns = {row["name"] for row in connection.execute("PRAGMA table_info(clips)").fetchall()}
@@ -309,6 +334,10 @@ def initialize_database() -> None:
             connection.execute("ALTER TABLE clips ADD COLUMN layout_type TEXT NOT NULL DEFAULT 'original' CHECK(layout_type IN ('original','split_streamer_gameplay'))")
         if "split_layout_json" not in clip_columns:
             connection.execute("ALTER TABLE clips ADD COLUMN split_layout_json TEXT NOT NULL DEFAULT '{}'")
+        if "vertical_crop_percent" not in clip_columns:
+            connection.execute("ALTER TABLE clips ADD COLUMN vertical_crop_percent REAL NOT NULL DEFAULT 0 CHECK(vertical_crop_percent BETWEEN 0 AND 40)")
+        if "custom_text_json" not in clip_columns:
+            connection.execute("ALTER TABLE clips ADD COLUMN custom_text_json TEXT NOT NULL DEFAULT '{}'")
         columns = {row["name"] for row in connection.execute("PRAGMA table_info(analysis_runs)").fetchall()}
         if "remote_interaction_id" not in columns:
             connection.execute("ALTER TABLE analysis_runs ADD COLUMN remote_interaction_id TEXT")

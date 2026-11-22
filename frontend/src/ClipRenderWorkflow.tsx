@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ArrowLeft, ChevronDown, Download, LoaderCircle, Play } from 'lucide-react'
 import { getRenderHistory, mediaUrl, requestClipExport, type DraftClip, type RenderJob } from './api'
+import SocialContentPanel from './SocialContentPanel'
 
 type Props = { clip: DraftClip; captionTrackId: string | null; sourceWidth: number; sourceHeight: number; onEdit: () => void }
 const active = (job: RenderJob) => job.status === 'queued' || job.status === 'processing'
@@ -10,6 +11,7 @@ export default function ClipRenderWorkflow({ clip, captionTrackId, sourceWidth, 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [resolution, setResolution] = useState<'1080' | '1440'>('1080')
+  const [socialRenderJobId, setSocialRenderJobId] = useState('')
   const canExport1440 = Math.min(sourceWidth, sourceHeight) >= 1440
   const reload = useCallback(async () => setJobs(await getRenderHistory(clip.id, captionTrackId)), [clip.id, captionTrackId])
   useEffect(() => { void reload().catch((e) => setError(e.message)) }, [reload])
@@ -40,8 +42,9 @@ export default function ClipRenderWorkflow({ clip, captionTrackId, sourceWidth, 
         {latestExport && <JobProgress job={latestExport} label={`Export V${latestExport.version_number ?? ''}`}/>}
         {error && <p role="alert" className="framing-error">{error}</p>}
       </div>
-      <aside className="render-history"><h3>Export versions</h3>{exports.length ? exports.map((job) => <article className="render-version" key={job.id}><div><strong>V{job.version_number} · {job.resolution}p</strong><small>{new Date(job.completed_at ?? job.created_at).toLocaleString()}</small></div><div className="render-version-actions"><a className="button secondary small" href={mediaUrl(job.stream_url!)} target="_blank" rel="noreferrer">Play</a><a className="button secondary small" href={mediaUrl(job.download_url!)}><Download size={13}/> Download</a></div></article>) : <p className="render-history-empty">Completed exports will appear here. Each version is kept separately.</p>}{jobs.filter((job) => job.kind === 'export' && job.status === 'failed').map((job) => <p className="framing-error" key={job.id}>V{job.version_number} failed: {job.error_message}</p>)}</aside>
+      <aside className="render-history"><h3>Export versions</h3>{exports.length ? exports.map((job) => <article className="render-version" key={job.id}><div><strong>V{job.version_number} · {job.resolution}p</strong><small>{new Date(job.completed_at ?? job.created_at).toLocaleString()}</small></div><div className="render-version-actions"><a className="button secondary small" href={mediaUrl(job.stream_url!)} target="_blank" rel="noreferrer">Play</a><a className="button secondary small" href={mediaUrl(job.download_url!)}><Download size={13}/> Download</a><button className="button secondary small" aria-expanded={socialRenderJobId === job.id} onClick={() => setSocialRenderJobId((current) => current === job.id ? '' : job.id)}>Social content</button></div></article>) : <p className="render-history-empty">Completed exports will appear here. Each version is kept separately.</p>}{jobs.filter((job) => job.kind === 'export' && job.status === 'failed').map((job) => <p className="framing-error" key={job.id}>V{job.version_number} failed: {job.error_message}</p>)}</aside>
     </div>
+    {exports.map((job) => socialRenderJobId === job.id && <SocialContentPanel key={job.id} renderJobId={job.id} version={job.version_number ?? 0} />)}
   </section></main>
 }
 

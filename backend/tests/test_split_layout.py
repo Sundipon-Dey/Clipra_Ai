@@ -28,7 +28,7 @@ def _layout():
     return {
         "split_ratio": .42,
         "top": {"source_mode": "same_video", "image_asset_id": None, "solid_color": "#151923", "framing_mode": "crop", "zoom": 1.8, "position_x": .22, "position_y": .37, "fit_background_color": "#112233"},
-        "bottom": {"framing_mode": "fit", "zoom": 1.25, "position_x": .79, "position_y": .68, "fit_background_color": "#334455"},
+        "bottom": {"source_mode": "same_video", "image_asset_id": None, "solid_color": "#151923", "framing_mode": "fit", "zoom": 1.25, "position_x": .79, "position_y": .68, "fit_background_color": "#334455"},
     }
 
 
@@ -156,4 +156,35 @@ def test_solid_color_top_source_is_persisted_and_rendered(client, tmp_path, monk
     frame = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", "0.2", "-i", str(rendered), "-vf", "crop=2:2:540:300", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], check=True, capture_output=True, timeout=30).stdout
     red, green, blue = frame[:3]
     assert abs(red - 120) < 25 and abs(green - 52) < 25 and abs(blue - 200) < 25
+
+
+def test_bottom_custom_image_and_solid_color_sources_render(client, tmp_path, monkeypatch):
+    from app.services.render_queue import _run
+
+    _, clip = _import_video(client, tmp_path)
+    monkeypatch.setattr("app.api.renders.enqueue", _run)
+    asset = _upload_png(client, clip["id"], tmp_path).json()
+    config = _layout()
+    config["bottom"].update(source_mode="custom_image", image_asset_id=asset["id"], vertical_crop_percent=8)
+    saved = client.patch(f"/api/clips/{clip['id']}", json={"layout_type": "split_streamer_gameplay", "split_layout": config})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["split_layout"]["bottom"]["source_mode"] == "custom_image"
+    export = client.post(f"/api/clips/{clip['id']}/exports", json={"approved": True})
+    assert export.status_code == 202, export.text
+    job = get_render(export.json()["id"])
+    assert job["status"] == "completed", job["error_message"]
+    snapshot = json.loads(job["snapshot_json"])
+    assert snapshot["layout_image_relative_paths"]["bottom"]
+    rendered = managed_path(job["output_relative_path"], must_exist=True)
+    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height", "-of", "json", str(rendered)], check=True, capture_output=True, text=True)
+    assert any(stream.get("width") == 1080 and stream.get("height") == 1920 for stream in json.loads(probe.stdout)["streams"])
+
+    config["bottom"].update(source_mode="solid_color", solid_color="#2860c8")
+    solid = client.patch(f"/api/clips/{clip['id']}", json={"split_layout": config})
+    assert solid.status_code == 200, solid.text
+    assert solid.json()["split_layout"]["bottom"]["solid_color"] == "#2860c8"
+    solid_export = client.post(f"/api/clips/{clip['id']}/exports", json={"approved": True})
+    assert solid_export.status_code == 202, solid_export.text
+    solid_job = get_render(solid_export.json()["id"])
+    assert solid_job["status"] == "completed", solid_job["error_message"]
 

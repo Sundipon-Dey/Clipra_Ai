@@ -128,9 +128,8 @@ def test_process_analysis_uses_managed_copy_and_cleans_up_remote_file(client, wo
     assert calls["deleted_interaction"] == "interaction/mock-id"
     assert hashlib.sha256(original.read_bytes()).hexdigest() == before_hash
     history = client.get(f"/api/media/{media['id']}/analyses")
-    # The synchronous fake runner is invoked directly; history is still persisted and queryable.
-    assert history.status_code == 200
-    assert history.json()[0]["candidates"][0]["title"] == "Moment"
+    # Legacy rows can be processed/cleaned internally but the removed feature stays unexposed.
+    assert history.status_code == 404
 
 
 def test_missing_source_fails_before_any_gemini_client_creation(client, workspace, tmp_path, monkeypatch):
@@ -366,43 +365,16 @@ def test_restart_marks_in_flight_jobs_interrupted_but_recovers_queued(client, wo
     assert recovered == [queued_id]
 
 
-def test_analysis_api_is_idempotent_until_explicit_rerun(client, tmp_path, monkeypatch):
-    settings.gemini_api_key = "mock-only-secret"
+def test_removed_analysis_api_is_not_exposed(client, tmp_path):
     original = generate_video(tmp_path / "api-runs.mp4", duration=1.5)
     media = _import_video(client, original)
-    scheduled: list[str] = []
-    monkeypatch.setattr("app.api.analyses.enqueue_analysis", scheduled.append)
-
-    first = client.post(f"/api/media/{media['id']}/analyses", json={"force": False})
-    assert first.status_code == 202
-    first_run = first.json()
-    assert first_run["status"] == "queued"
-    assert first_run["model_name"] == "gemini-3.5-flash-lite"
-    assert "mock-only-secret" not in first.text
-
-    repeated = client.post(f"/api/media/{media['id']}/analyses", json={"force": False})
-    assert repeated.status_code == 200
-    assert repeated.json()["id"] == first_run["id"]
-    assert scheduled == [first_run["id"]]
-
-    with connect() as connection:
-        connection.execute("UPDATE analysis_runs SET status='completed' WHERE id=?", (first_run["id"],))
-    rerun = client.post(f"/api/media/{media['id']}/analyses", json={"force": True})
-    assert rerun.status_code == 202
-    assert rerun.json()["id"] != first_run["id"]
-    assert scheduled == [first_run["id"], rerun.json()["id"]]
-
-    history = client.get(f"/api/media/{media['id']}/analyses")
-    detail = client.get(f"/api/analyses/{first_run['id']}")
-    assert history.status_code == detail.status_code == 200
-    assert len(history.json()) == 2
-    assert detail.json()["id"] == first_run["id"]
+    assert client.post(f"/api/media/{media['id']}/analyses", json={"force": False}).status_code == 404
+    assert client.get(f"/api/media/{media['id']}/analyses").status_code == 404
 
 
-def test_analysis_endpoint_requires_backend_key(client, tmp_path, monkeypatch):
+def test_removed_analysis_endpoint_does_not_reappear_when_key_is_missing(client, tmp_path, monkeypatch):
     original = generate_video(tmp_path / "no-key.mp4", duration=1.5)
     media = _import_video(client, original)
     monkeypatch.setattr(settings, "gemini_api_key", "")
     response = client.post(f"/api/media/{media['id']}/analyses", json={"force": False})
-    assert response.status_code == 503
-    assert "GEMINI_API_KEY" in response.json()["detail"]
+    assert response.status_code == 404

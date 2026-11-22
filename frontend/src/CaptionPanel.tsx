@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Download, LoaderCircle, RefreshCw, Sparkles, Type } from 'lucide-react'
-import { clearTranscriptions, createCaptionTrack, downloadTranscriptionModel, getCaptionTracks, getHardwareProfile, getModelDownload, getTranscriptionModels, getTranscriptions, reflowCaptionTrack, startTranscription, updateCaptionTrack, updateCaptionWord, type CaptionTrack, type DraftClip, type HardwareProfile, type TranscriptionModel, type TranscriptionRun } from './api'
+import { clearTranscriptions, createCaptionTrack, downloadTranscriptionModel, getCaptionTracks, getHardwareProfile, getModelDownload, getTranscriptionModels, getTranscriptions, reflowCaptionTrack, startTranscription, updateCaptionTrack, updateCaptionWord, type CaptionTrack, type CustomText, type DraftClip, type HardwareProfile, type TranscriptionModel, type TranscriptionRun } from './api'
 import { captionPresets } from './captionPresets'
+import CustomTextPanel from './CustomTextPanel'
 
-type Props = { clip: DraftClip; activeTrack: CaptionTrack | null; onTrack: (track: CaptionTrack | null) => void }
+type Props = { clip: DraftClip; activeTrack: CaptionTrack | null; onTrack: (track: CaptionTrack | null) => void; customText: CustomText; onCustomText: (patch: Partial<CustomText>) => void }
 
-export default function CaptionPanel({ clip, activeTrack, onTrack }: Props) {
+export default function CaptionPanel({ clip, activeTrack, onTrack, customText, onCustomText }: Props) {
+  const [tab, setTab] = useState<'captions' | 'custom'>('captions')
   const [hardware, setHardware] = useState<HardwareProfile | null>(null)
   const [models, setModels] = useState<TranscriptionModel[]>([])
   const [runs, setRuns] = useState<TranscriptionRun[]>([])
@@ -64,8 +66,9 @@ export default function CaptionPanel({ clip, activeTrack, onTrack }: Props) {
     try { onTrack(await updateCaptionTrack(activeTrack.id, { style: { ...activeTrack.style, [key]: value } })) } catch (error) { setMessage(error instanceof Error ? error.message : 'Caption style could not be saved.') }
   }
   return <section className="caption-panel">
-    <div className="caption-heading"><div><p className="eyebrow">LOCAL CAPTIONS</p><h3><Type size={16}/> Captions & subtitles</h3></div><button className="icon-button subtle" onClick={() => void refresh()} aria-label="Refresh caption status"><RefreshCw size={14}/></button></div>
-    {loading ? <p className="caption-note"><LoaderCircle size={13} className="spin"/> Checking local transcription tools…</p> : <>
+    <div className="caption-heading"><div><p className="eyebrow">TEXT OVERLAYS</p><h3><Type size={16}/> Text settings</h3></div>{tab === 'captions' && <button className="icon-button subtle" onClick={() => void refresh()} aria-label="Refresh caption status"><RefreshCw size={14}/></button>}</div>
+    <div className="text-settings-tabs" role="tablist" aria-label="Text overlay settings"><button type="button" role="tab" aria-selected={tab === 'custom'} className={tab === 'custom' ? 'active' : ''} onClick={() => setTab('custom')}>Custom Text</button><button type="button" role="tab" aria-selected={tab === 'captions'} className={tab === 'captions' ? 'active' : ''} onClick={() => setTab('captions')}>Local Captions</button></div>
+    {tab === 'custom' ? <CustomTextPanel value={customText} onChange={onCustomText}/> : loading ? <p className="caption-note"><LoaderCircle size={13} className="spin"/> Checking local transcription tools…</p> : <>
       {hardware && <div className="hardware-card"><strong>{hardware.cpu_count}-thread CPU · INT8</strong><p>{hardware.explanation}</p><small>{hardware.memory_gib ? `${hardware.memory_gib} GB RAM · ` : ''}{hardware.free_disk_gib} GB workspace free · CPU INT8 transcription may take longer.</small></div>}
       {selectedModel && <div className="model-card"><div><strong>{selectedModel.display_name}</strong><small>{selectedModel.estimated_download_mb} MB · {selectedModel.language}</small></div>{selectedModel.installed ? <button className="button ai-button small" disabled={busy} onClick={() => void transcribe()}><Sparkles size={13}/> Transcribe clip locally</button> : <button className="button secondary small" disabled={busy} onClick={() => void download()}><Download size={13}/> Download model</button>}</div>}
       <p className="caption-note">Models download only after you choose Download. Transcription processes this clip locally; Gemini is not used.</p>

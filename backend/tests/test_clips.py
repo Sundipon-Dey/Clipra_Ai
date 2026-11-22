@@ -40,7 +40,7 @@ def test_manual_clip_create_patch_and_duration_validation(client, tmp_path):
     assert client.post(f"/api/media/{media['id']}/clips", json={"title": "Invalid", "start_seconds": 0, "end_seconds": 8}).status_code == 422
 
 
-def test_candidate_conversion_scoped_to_source_media(client, tmp_path):
+def test_legacy_candidate_conversion_route_remains_removed(client, tmp_path):
     media = _import_video(client, tmp_path)
     from app.db.database import connect
     from app.services.project_store import create_analysis_run
@@ -49,12 +49,10 @@ def test_candidate_conversion_scoped_to_source_media(client, tmp_path):
         db.execute("UPDATE analysis_runs SET status='completed' WHERE id=?", (run_id,))
         db.execute("INSERT INTO analysis_candidates(id,analysis_id,ordinal,start_seconds,end_seconds,title,description,category,reasoning) VALUES('candidate-1',?,0,.1,.5,'A moment','Description','funny','Reason')", (run_id,))
     converted = client.post("/api/analysis-candidates/candidate-1/clips")
-    assert converted.status_code == 201
-    clip = converted.json()
-    assert clip["source_candidate_id"] == "candidate-1"
+    assert converted.status_code == 404
     manual = client.post(f"/api/media/{media['id']}/clips", json={"title": "Manual", "start_seconds": 0.6, "end_seconds": 1.0}).json()
     assert manual["source_candidate_id"] is None
-    assert {item["id"] for item in client.get(f"/api/media/{media['id']}/clips").json()} == {clip["id"], manual["id"]}
+    assert {item["id"] for item in client.get(f"/api/media/{media['id']}/clips").json()} == {manual["id"]}
     assert client.get("/api/clips/not-a-clip").status_code == 404
 
 

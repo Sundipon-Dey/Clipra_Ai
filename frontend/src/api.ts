@@ -36,17 +36,18 @@ export type ClipwingEntry = { id: string; ordinal: number; title: string; start_
 export type ClipwingImport = { id: string; project_id: string; status: 'queued' | 'downloading' | 'cutting' | 'completed' | 'completed_with_errors' | 'failed' | 'interrupted'; stage: string; progress: number; video_title: string | null; video_duration_seconds: number | null; formats: ClipwingFormat[]; error_message: string | null; created_at: string; updated_at: string; entries: ClipwingEntry[] }
 
 export type FocalPoint = { time_seconds: number; x: number; y: number; confidence: number | null }
-export type SplitSection = { framing_mode: 'crop' | 'fit'; zoom: number; position_x: number; position_y: number; fit_background_color: string }
+export type SplitSection = { source_mode?: 'same_video' | 'custom_image' | 'solid_color'; image_asset_id?: string | null; solid_color?: string; framing_mode: 'crop' | 'fit'; vertical_crop_percent?: number; zoom: number; position_x: number; position_y: number; fit_background_color: string }
 export type SplitLayout = { split_ratio: number; top: SplitSection & { source_mode: 'same_video' | 'custom_image' | 'solid_color'; image_asset_id: string | null; solid_color: string }; bottom: SplitSection }
 export type LayoutImage = { id: string; clip_id: string; original_filename: string; content_type: string; size_bytes: number; width: number; height: number; created_at: string; image_url: string }
+export type CustomText = { enabled: boolean; text: string; preset_id: string; position_x: number; position_y: number; font_family: string; font_weight: number; font_size: number; text_color: string; background_color: string; background_opacity: number; animation: CaptionStyle['animation']; animation_ms: number; stroke_enabled: boolean; stroke_width: number; stroke_color: string; shadow_enabled: boolean; shadow_blur: number; shadow_color: string; shadow_x: number; shadow_y: number }
 export type DraftClip = {
   id: string; project_id: string; media_id: string; source_candidate_id: string | null; title: string
   start_seconds: number; end_seconds: number; workflow_status: 'draft'
   framing_mode: 'smart_crop' | 'fit' | 'blurred_background' | 'manual_crop'
   recommended_framing_mode: string | null; manual_focus_x: number; manual_focus_y: number
-  manual_zoom: number; blur_strength: number; fit_background_color: string; framing_status: 'not_requested' | 'pending' | 'completed' | 'failed'
+  manual_zoom: number; vertical_crop_percent?: number; blur_strength: number; fit_background_color: string; framing_status: 'not_requested' | 'pending' | 'completed' | 'failed'
   manual_override_enabled: boolean
-  layout_type: 'original' | 'split_streamer_gameplay'; split_layout: SplitLayout
+  layout_type: 'original' | 'split_streamer_gameplay'; split_layout: SplitLayout; custom_text?: CustomText
   framing_error_code: string | null; framing_error_message: string | null; framing_model: string | null
   framing_requested_at: string | null; framing_completed_at: string | null
   framing_start_seconds: number | null; framing_end_seconds: number | null
@@ -63,6 +64,9 @@ export type CaptionTrack = { id: string; clip_id: string; transcription_run_id: 
 export type TranscriptionRun = { id: string; clip_id: string; media_id: string; status: string; model_id: string; language: string; device_profile: 'cpu:int8'; clip_start_seconds: number; clip_end_seconds: number; started_at: string | null; completed_at: string | null; error_code: string | null; error_message: string | null; created_at: string; caption_track_id: string | null }
 
 export type RenderJob = { id: string; clip_id: string; project_id: string; kind: 'export'; status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'interrupted' | 'stale'; config_hash: string; progress: number; stage: string; error_message: string | null; output_bytes: number | null; version_number: number | null; approved_at: string | null; created_at: string; completed_at: string | null; stream_url: string | null; download_url: string | null; current: boolean; resolution: '1080' | '1440' }
+export type SocialPlatform = 'tiktok' | 'instagram_reels' | 'youtube_shorts' | 'facebook_reels'
+export type SocialPackage = Record<string, string | string[]>
+export type SocialContentGeneration = { id: string; render_job_id: string; status: 'queued' | 'uploading' | 'processing_file' | 'generating' | 'completed' | 'failed' | 'interrupted'; progress: number; stage: string; model_name: string; prompt_version: string; error_code: string | null; error_message: string | null; cleanup_pending: boolean; created_at: string; completed_at: string | null; generated_packages: Record<SocialPlatform, SocialPackage> | null; packages: Record<SocialPlatform, SocialPackage> | null }
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000').replace(/\/$/, '')
 
@@ -171,4 +175,8 @@ export const reflowCaptionTrack = (id: string, maxWords: number, maxLines: numbe
 export const requestClipExport = (id: string, captionTrackId: string | null, resolution: '1080' | '1440') => request<RenderJob>(`/api/clips/${encodeURIComponent(id)}/exports`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approved: true, caption_track_id: captionTrackId, resolution }) })
 export const getRenderHistory = (id: string, captionTrackId: string | null) => request<RenderJob[]>(`/api/clips/${encodeURIComponent(id)}/render-jobs${captionTrackId ? `?caption_track_id=${encodeURIComponent(captionTrackId)}` : ''}`)
 export const getRenderJob = (id: string) => request<RenderJob>(`/api/render-jobs/${encodeURIComponent(id)}`)
+export const getSocialContentHistory = (renderJobId: string) => request<SocialContentGeneration[]>(`/api/render-jobs/${encodeURIComponent(renderJobId)}/social-content-generations`)
+export const startSocialContentGeneration = (renderJobId: string) => request<SocialContentGeneration>(`/api/render-jobs/${encodeURIComponent(renderJobId)}/social-content-generations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consent_to_upload_video: true }) })
+export const getSocialContentGeneration = (id: string) => request<SocialContentGeneration>(`/api/social-content-generations/${encodeURIComponent(id)}`)
+export const saveSocialPackage = (id: string, platform: SocialPlatform, content: SocialPackage) => request<SocialContentGeneration>(`/api/social-content-generations/${encodeURIComponent(id)}/platforms/${platform}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) })
 

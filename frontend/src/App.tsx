@@ -69,8 +69,6 @@ export default function App() {
   const [activeMedia, setActiveMedia] = useState<MediaAsset | null>(null)
   const [clipsByMedia, setClipsByMedia] = useState<Record<string, DraftClip[]>>({})
   const [editingClip, setEditingClip] = useState<{ media: MediaAsset; clip: DraftClip } | null>(null)
-  const [geminiConfigured, setGeminiConfigured] = useState(false)
-  const [geminiModel, setGeminiModel] = useState('gemini-3.5-flash-lite')
   const fileInput = useRef<HTMLInputElement>(null)
 
   const refreshProjects = useCallback(async () => {
@@ -99,8 +97,6 @@ export default function App() {
         if (healthData.status !== 'ok' || healthData.service !== 'clipra-api') throw new Error('The local API health response was invalid.')
         if (!mounted) return
         setUploadLimit(Number(healthData.max_upload_bytes) || uploadLimit)
-        setGeminiConfigured(healthData.gemini_configured === 'true')
-        setGeminiModel(healthData.gemini_model)
         setConnection('connected')
         setPageError(null)
         const result = await getProjects()
@@ -217,8 +213,6 @@ export default function App() {
       const health = await response.json() as Health
       if (health.status !== 'ok' || health.service !== 'clipra-api') throw new Error('The local API health response was invalid.')
       setUploadLimit(Number(health.max_upload_bytes) || uploadLimit)
-      setGeminiConfigured(health.gemini_configured === 'true')
-      setGeminiModel(health.gemini_model)
       setConnection('connected')
       await refreshProjects()
     } catch (error) {
@@ -253,7 +247,7 @@ export default function App() {
   }
 
   return editingClip ? (
-    <ClipEditor key={editingClip.clip.id} media={editingClip.media} clip={editingClip.clip} geminiConfigured={geminiConfigured} model={geminiModel} onClose={() => setEditingClip(null)} onMediaUpdated={updateProjectMedia} onSaved={(updated) => { setEditingClip((current) => current ? { ...current, clip: updated } : current); setClipsByMedia((current) => ({ ...current, [updated.media_id]: (current[updated.media_id] ?? []).map((item) => item.id === updated.id ? updated : item) })) }} />
+    <ClipEditor key={editingClip.clip.id} media={editingClip.media} clip={editingClip.clip} onClose={() => setEditingClip(null)} onMediaUpdated={updateProjectMedia} onSaved={(updated) => { setEditingClip((current) => current ? { ...current, clip: updated } : current); setClipsByMedia((current) => ({ ...current, [updated.media_id]: (current[updated.media_id] ?? []).map((item) => item.id === updated.id ? updated : item) })) }} />
   ) : (
     <main className="app-shell">
       <header className="topbar">

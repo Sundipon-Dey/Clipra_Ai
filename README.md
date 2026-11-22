@@ -131,7 +131,7 @@ projects/<project-id>/layout-images/             # validated split-layout still 
 temp/rendering/                    # transient Chromium caption frames and partial MP4 files
 ```
 
-SQLite schema version 10 contains:
+SQLite schema version 12 contains:
 
 - `projects`: ID, name, creation timestamp, and last-updated timestamp.
 - `media`: project relationship, original filename, managed relative source path, actual byte size, duration, width, height, rational and decimal frame rate, video codec, audio codec and availability, FFprobe container format, preview status/path/error, and import timestamp.
@@ -145,6 +145,7 @@ SQLite schema version 10 contains:
 - `render_jobs`: immutable JSON configuration snapshots and hashes, per-clip export status and progress, selected output profile, explicit approval timestamps, unique output paths, and monotonically increasing export version numbers. Render history is retained independently of editable clip rows.
 - `clips.layout_type` and `clips.split_layout_json`: Original Layout default and isolated split-screen settings for both sections, including top source/image/color, framing, zoom, position, and divider ratio.
 - `clip_layout_assets`: validated PNG/JPG/WebP metadata and managed paths for uploaded top-section images. Image files are not automatically deleted when a layout changes or a render snapshot references them.
+- `social_content_generations`: generation attempts associated with one immutable export version, per-run consent, model and prompt versions, progress/recovery state, validated generated packages, separate editable package values, and pending Google cleanup references. This data remains local in SQLite; no post is published.
 
 The database uses foreign-key checks and write-ahead logging. Media paths stored in SQLite are relative and are resolved and checked against the configured workspace before access. Databases, projects, uploaded media, previews, temporary files, exports, and logs are excluded from Git.
 
@@ -187,12 +188,16 @@ Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs` w
 | GET | `/api/render-jobs/{job_id}` | Inspect render state and progress. |
 | GET, HEAD | `/api/render-jobs/{job_id}/stream` | Play completed exports with HTTP byte-range seeking. |
 | GET | `/api/render-jobs/{job_id}/download` | Download a completed export MP4. |
+| POST | `/api/render-jobs/{render_job_id}/social-content-generations` | Start Stage 6 after explicit per-run consent to upload that completed export and context to Google Gemini. |
+| GET | `/api/render-jobs/{render_job_id}/social-content-generations` | Read generation attempts and packages for an exact export version. |
+| GET | `/api/social-content-generations/{generation_id}` | Inspect social generation progress and saved package state. |
+| PATCH | `/api/social-content-generations/{generation_id}/platforms/{platform}` | Save user edits to one platform package. |
 
 Stage 5 exports one clip at a time at 9:16. The Export page always offers 1080 x 1920 and offers 1440 x 2560 only when FFprobe reports the original upload is at least 1440p (both source dimensions are at least 1440 pixels). Lower-resolution uploads are limited to 1080p. A 1440p landscape source can still be upscaled after a vertical crop, so larger output dimensions do not restore cropped detail. Clicking **Export** is the explicit approval and starts the only render pass. The renderer uses the current saved framing and caption settings, including Chromium-rendered caption frames from the editor's `CaptionOverlay` CSS, with FFmpeg for video composition. Final exports use H.264 CRF 18 with the medium preset and AAC at 160 kb/s. The chosen output profile is stored in each immutable render snapshot, so versions can use different resolutions without changing the editable draft or prior exports. Each export is an immutable V1, V2, and later version; editing resumes on the same draft and never overwrites an earlier output. Source media and completed exports are not automatically deleted. Existing Stage 5 preview files are retained locally but are not generated or shown by the current workflow. Imported-media playback compatibility previews remain separate.
 
 The split-screen add-on keeps the same output profile and Stage 5 approval/version behavior. A single source video branches into synchronized top and bottom filters; only its original audio stream is mapped. A custom image is looped for the top, or a solid color can fill it, while the source clip supplies the bottom and audio. Captions use the editor's Chromium component and are composited after the sections are stacked; preset colors, shadows, text sizing, word highlighting, and animations use the same CSS as the editor. Each section's framing, zoom, and position settings are independent. Images are limited by `CLIPRA_MAX_LAYOUT_IMAGE_BYTES` (25 MiB by default), an 8192-pixel maximum side, and a 40-megapixel maximum. Replacing an image reference does not delete its managed file.
 
-`GET /api/health` reports whether Gemini is configured for optional Smart Crop suggestions. It never returns the key.
+`GET /api/health` reports whether Gemini is configured for optional Smart Crop suggestions and Stage 6 social copy. It never returns the key.
 
 Unsatisfiable or unsupported ranges receive HTTP `416`; successful partial playback requests receive `206 Partial Content`. Missing managed sources return `410 Gone`; unknown projects/media return `404`.
 
@@ -227,7 +232,11 @@ Backend tests generate short synthetic videos and images with FFmpeg locally. Th
 - Stage 3: draft clip editing and optional focal-point framing recommendations (implemented; approval and export are not included).
 - Stage 4: local faster-whisper transcription and editable caption drafts (implemented; Stage 5 exports captions with the editor's Chromium component).
 - Stage 5: direct approved export, immutable versioned MP4s, playback/download, and editing after export (implemented; export uses H.264 CRF 18).
+- Stage 6: consented per-export Gemini social copy for TikTok, Instagram Reels, YouTube Shorts, and Facebook Reels, with persistent progress, editable packages, and explicit regeneration (implemented; automated tests mock Google and do not make billable requests).
 - Split-Screen Streamer + Gameplay add-on after Stage 5: optional vertical same-video or custom-image composition integrated with direct Stage 5 exports (implemented; no face detection or batch workflow).
 
 See [Clipwing import details](docs/clipwing-import.md) for accepted input format, format selection, per-clip progress, storage behavior, and restart handling.
+See [Custom Text and Original Layout crop](docs/custom-text-and-original-crop.md) for the editor's independent text overlay and top/bottom crop controls.
+Split-screen top and bottom sections also have separate vertical trim controls; see [split-screen layout details](docs/split-screen-layout.md).
+See [Stage 6 social content](docs/stage6-social-content.md) for the per-export consent, upload, package editing, quota, and recovery behavior.
 

@@ -18,11 +18,16 @@ async function linkOrCopy(source, target) {
   }
 }
 
-function frameCaptionState(track, clipStartSeconds, sourceTime) {
+function frameCaptionState(track, customText, clipStartSeconds, sourceTime) {
+  const customAnimation = customText?.enabled && customText.text?.trim() && customText.animation !== 'none'
+    ? (sourceTime - clipStartSeconds) * 1000 < (customText.animation_ms || 140) ? Math.floor((sourceTime - clipStartSeconds) * 1000) : 'settled'
+    : 'static'
+  const customKey = customText?.enabled && customText.text?.trim() ? `custom|${customAnimation}` : 'custom|off'
+  if (!track?.segments?.length) return { key: customKey }
   const relative = sourceTime - clipStartSeconds + track.timing_offset_seconds
   const segment = track.segments.find((item) => relative >= item.start_seconds && relative < item.end_seconds)
   const word = segment?.words.find((item) => relative >= item.start_seconds && relative < item.end_seconds)
-  if (!segment || (track.grouping.display_mode === 'one_word' && !word)) return { key: 'blank' }
+  if (!segment || (track.grouping.display_mode === 'one_word' && !word)) return { key: `blank|${customKey}` }
 
   const style = track.style
   const oneWord = track.grouping.display_mode === 'one_word'
@@ -39,15 +44,15 @@ function frameCaptionState(track, clipStartSeconds, sourceTime) {
     ? Math.floor(wordElapsed * 1000)
     : 'settled'
 
-  return { key: `${segment.id}|${word?.id ?? 'none'}|${captionPhase}|${wordPhase}` }
+  return { key: `${segment.id}|${word?.id ?? 'none'}|${captionPhase}|${wordPhase}|${customKey}` }
 }
 
 async function main() {
   const requestPath = process.argv[2]
   if (!requestPath) throw new Error('Caption render request path is required.')
   const request = JSON.parse(await readFile(requestPath, 'utf8'))
-  const { track, clipStartSeconds, durationSeconds, fps, frameCount, framesDirectory, captionScale = 3 } = request
-  if (!track || !Array.isArray(track.segments) || !Number.isFinite(clipStartSeconds) || !Number.isFinite(durationSeconds) || !Number.isFinite(fps) || !Number.isInteger(frameCount) || frameCount < 1) {
+  const { track, customText, clipStartSeconds, durationSeconds, fps, frameCount, framesDirectory, captionScale = 3 } = request
+  if ((!track || !Array.isArray(track.segments)) && !(customText?.enabled && typeof customText.text === 'string') || !Number.isFinite(clipStartSeconds) || !Number.isFinite(durationSeconds) || !Number.isFinite(fps) || !Number.isInteger(frameCount) || frameCount < 1) {
     throw new Error('Caption render request is invalid.')
   }
   const frameDirectory = resolve(framesDirectory)
@@ -84,7 +89,7 @@ async function main() {
     const context = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: captionScale, reducedMotion: 'no-preference', colorScheme: 'dark' })
     const page = await context.newPage()
     page.setDefaultTimeout(30_000)
-    const payload = { track, clipStartSeconds }
+    const payload = { track, customText, clipStartSeconds }
     await page.addInitScript((initial) => { window.__clipraRenderPayload = initial }, payload)
     await page.goto(`http://127.0.0.1:${address.port}/caption-renderer.html`, { waitUntil: 'networkidle' })
     await page.evaluate(() => {
@@ -103,7 +108,7 @@ async function main() {
     for (let frame = 0; frame < frameCount; frame++) {
       const seconds = frame / fps
       const sourceTime = clipStartSeconds + seconds
-      const { key } = frameCaptionState(track, clipStartSeconds, sourceTime)
+      const { key } = frameCaptionState(track, customText, clipStartSeconds, sourceTime)
       let imagePath = stateImages.get(key)
       if (!imagePath) {
         await page.evaluate((time) => window.clipraSetCaptionTime?.(time), sourceTime)

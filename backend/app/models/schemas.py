@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -138,7 +138,11 @@ class ClipCreate(BaseModel):
 
 
 class SplitSectionConfig(BaseModel):
+    source_mode: Literal["same_video", "custom_image", "solid_color"] = "same_video"
+    image_asset_id: str | None = None
+    solid_color: str = Field(default="#151923", pattern=r"^#[0-9A-Fa-f]{6}$")
     framing_mode: Literal["crop", "fit"] = "crop"
+    vertical_crop_percent: float = Field(default=0, ge=0, le=40, allow_inf_nan=False)
     zoom: float = Field(default=1, ge=1, le=10, allow_inf_nan=False)
     position_x: float = Field(default=.5, ge=0, le=1, allow_inf_nan=False)
     position_y: float = Field(default=.5, ge=0, le=1, allow_inf_nan=False)
@@ -146,9 +150,7 @@ class SplitSectionConfig(BaseModel):
 
 
 class SplitTopConfig(SplitSectionConfig):
-    source_mode: Literal["same_video", "custom_image", "solid_color"] = "same_video"
-    image_asset_id: str | None = None
-    solid_color: str = Field(default="#151923", pattern=r"^#[0-9A-Fa-f]{6}$")
+    pass
 
 
 class SplitLayoutConfig(BaseModel):
@@ -169,6 +171,30 @@ class LayoutImageOut(BaseModel):
     image_url: str
 
 
+class CustomTextConfig(BaseModel):
+    enabled: bool = False
+    text: str = Field(default="", max_length=1000)
+    preset_id: str = Field(default="gaming_pulse", pattern=r"^[a-z0-9_]{1,48}$")
+    position_x: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
+    position_y: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
+    font_family: str = Field(default="Arial Black", max_length=80)
+    font_weight: int = Field(default=900, ge=100, le=900)
+    font_size: int = Field(default=76, ge=18, le=160)
+    text_color: str = Field(default="#FFFFFF", pattern=r"^#[0-9A-Fa-f]{6}$")
+    background_color: str = Field(default="#000000", pattern=r"^#[0-9A-Fa-f]{6}$")
+    background_opacity: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
+    animation: Literal["none", "fade", "pop", "karaoke", "pop_karaoke"] = "pop_karaoke"
+    animation_ms: int = Field(default=120, ge=0, le=1000)
+    stroke_enabled: bool = False
+    stroke_width: float = Field(default=4, ge=0, le=20, allow_inf_nan=False)
+    stroke_color: str = Field(default="#000000", pattern=r"^#[0-9A-Fa-f]{6}$")
+    shadow_enabled: bool = True
+    shadow_blur: float = Field(default=5, ge=0, le=40, allow_inf_nan=False)
+    shadow_color: str = Field(default="#000000", pattern=r"^#[0-9A-Fa-f]{6}$")
+    shadow_x: float = Field(default=3, ge=-30, le=30, allow_inf_nan=False)
+    shadow_y: float = Field(default=3, ge=-30, le=30, allow_inf_nan=False)
+
+
 class ClipUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=160)
     start_seconds: float | None = Field(default=None, ge=0, allow_inf_nan=False)
@@ -177,11 +203,13 @@ class ClipUpdate(BaseModel):
     manual_focus_x: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     manual_focus_y: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     manual_zoom: float | None = Field(default=None, ge=1, le=3, allow_inf_nan=False)
+    vertical_crop_percent: float | None = Field(default=None, ge=0, le=40, allow_inf_nan=False)
     blur_strength: float | None = Field(default=None, ge=0, le=40, allow_inf_nan=False)
     fit_background_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     manual_override_enabled: bool | None = None
     layout_type: Literal["original", "split_streamer_gameplay"] | None = None
     split_layout: SplitLayoutConfig | None = None
+    custom_text: CustomTextConfig | None = None
 
 
 class ClipOut(BaseModel):
@@ -198,11 +226,13 @@ class ClipOut(BaseModel):
     manual_focus_x: float
     manual_focus_y: float
     manual_zoom: float
+    vertical_crop_percent: float = 0
     blur_strength: float
     fit_background_color: str
     manual_override_enabled: bool = False
     layout_type: Literal["original", "split_streamer_gameplay"] = "original"
     split_layout: SplitLayoutConfig = Field(default_factory=SplitLayoutConfig)
+    custom_text: CustomTextConfig = Field(default_factory=CustomTextConfig)
     framing_status: str
     framing_error_code: str | None
     framing_error_message: str | None
@@ -241,6 +271,31 @@ class RenderApproval(BaseModel):
     approved: bool
     caption_track_id: str | None = None
     resolution: Literal["1080", "1440"] = "1080"
+
+
+class SocialContentStart(BaseModel):
+    consent_to_upload_video: bool
+
+
+class SocialPackageUpdate(BaseModel):
+    content: dict[str, Any]
+
+
+class SocialContentGenerationOut(BaseModel):
+    id: str
+    render_job_id: str
+    status: str
+    progress: float
+    stage: str
+    model_name: str
+    prompt_version: str
+    error_code: str | None
+    error_message: str | None
+    cleanup_pending: bool
+    created_at: str
+    completed_at: str | None
+    generated_packages: dict[str, dict[str, Any]] | None = None
+    packages: dict[str, dict[str, Any]] | None = None
 
 
 class FramingSuggestionRequest(BaseModel):

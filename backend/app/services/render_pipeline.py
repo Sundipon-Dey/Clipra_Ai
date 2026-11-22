@@ -39,6 +39,8 @@ def _focus_expr(snapshot: dict) -> tuple[str, str]:
 def filter_graph(snapshot: dict, width: int = WIDTH, height: int = HEIGHT) -> str:
     clip = snapshot["clip"]
     mode = clip["framing_mode"]
+    vertical_crop = max(0.0, min(40.0, float(clip.get("vertical_crop_percent", 0)))) / 100
+    crop_prefix = f"crop=iw:ih*{1 - 2 * vertical_crop:.6f}:0:ih*{vertical_crop:.6f}," if vertical_crop else ""
     if mode == "fit":
         color = clip.get("fit_background_color", "#090a0f").lstrip("#")
         zoom = max(1.0, min(3.0, float(clip.get("manual_zoom", 1))))
@@ -52,12 +54,14 @@ def filter_graph(snapshot: dict, width: int = WIDTH, height: int = HEIGHT) -> st
         zoom = max(1.0, min(3.0, float(clip.get("manual_zoom", 1))))
         cw, ch = width / zoom, height / zoom
         graph = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={cw:.3f}:{ch:.3f}:(iw-ow)*({fx}):(ih-oh)*({fy}),scale={width}:{height},setsar=1"
-    return graph
+    return crop_prefix + graph
 
 
 def _section_graph(source_label: str, output_label: str, section: dict, width: int, height: int) -> str:
     zoom = max(1.0, min(10.0, float(section["zoom"])))
     px, py = max(0.0, min(1.0, float(section["position_x"]))), max(0.0, min(1.0, float(section["position_y"])))
+    vertical_crop = max(0.0, min(40.0, float(section.get("vertical_crop_percent", 0)))) / 100
+    crop = f"crop=iw:ih*{1 - 2 * vertical_crop:.6f}:0:ih*{vertical_crop:.6f}," if vertical_crop else ""
     sw = max(2, round(width * zoom / 2) * 2)
     sh = max(2, round(height * zoom / 2) * 2)
     color = section["fit_background_color"].lstrip("#")
@@ -66,10 +70,10 @@ def _section_graph(source_label: str, output_label: str, section: dict, width: i
         graph += f",crop={width}:{height}:(iw-ow)*{px:.6f}:(ih-oh)*{py:.6f}"
     else:
         graph = f"scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={width}:{height}:(iw-ow)*{px:.6f}:(ih-oh)*{py:.6f}"
-    return f"[{source_label}]{graph},setsar=1[{output_label}]"
+    return f"[{source_label}]{crop}{graph},setsar=1[{output_label}]"
 
 
-def split_filter_graph(snapshot: dict, caption_input: int | None = None, width: int = WIDTH, height: int = HEIGHT) -> str:
+def split_filter_graph(snapshot: dict, caption_input: int | None = None, width: int = WIDTH, height: int = HEIGHT, image_inputs: dict[str, int] | None = None) -> str:
     config = snapshot["clip"]["split_layout"]
     ratio = max(.25, min(.75, float(config["split_ratio"])))
     top_height = max(2, round(height * ratio / 2) * 2)
@@ -77,19 +81,29 @@ def split_filter_graph(snapshot: dict, caption_input: int | None = None, width: 
     top_config, bottom_config = config["top"], config["bottom"]
     fps = max(1.0, min(120.0, float(snapshot.get("source_frame_rate_decimal") or 30)))
     pieces: list[str] = []
-    if top_config["source_mode"] == "same_video":
-        pieces.append("[0:v]split=2[top_input][bottom_input]")
-    elif top_config["source_mode"] == "custom_image":
-        pieces.extend(("[0:v]null[bottom_input]", "[1:v]null[top_input]"))
-    else:
-        color = top_config["solid_color"].lstrip("#")
-        pieces.extend(("[0:v]null[bottom_input]", f"color=c=0x{color}:s={width}x{top_height}:r={fps:.6f},setsar=1[top]"))
-    if top_config["source_mode"] != "solid_color":
-        pieces.append(f"[top_input]setpts=PTS-STARTPTS,fps={fps:.6f}[top_timed]")
-    pieces.append(f"[bottom_input]setpts=PTS-STARTPTS,fps={fps:.6f}[bottom_timed]")
-    if top_config["source_mode"] != "solid_color":
-        pieces.append(_section_graph("top_timed", "top", top_config, width, top_height))
-    pieces.append(_section_graph("bottom_timed", "bottom", bottom_config, width, bottom_height))
+    image_inputs = image_inputs or {}
+    configs = {"top": top_config, "bottom": bottom_config}
+    same_video_sections = [key for key, section in configs.items() if section.get("source_mode", "same_video") == "same_video"]
+    if len(same_video_sections) == 2:
+        pieces.append("[0:v]split=2[video_top][video_bottom]")
+    elif same_video_sections:
+        pieces.append(f"[0:v]null[video_{same_video_sections[0]}]")
+    for key, section in configs.items():
+        mode = section.get("source_mode", "same_video")
+        out_height = top_height if key == "top" else bottom_height
+        if mode == "solid_color":
+            color = section.get("solid_color", "#151923").lstrip("#")
+            pieces.append(f"color=c=0x{color}:s={width}x{out_height}:r={fps:.6f},setsar=1[{key}]")
+            continue
+        if mode == "custom_image":
+            if key not in image_inputs:
+                raise ValueError(f"Missing managed source image for split-screen {key} section.")
+            source_label = f"{image_inputs[key]}:v"
+        else:
+            source_label = f"video_{key}"
+        timed_label = f"{key}_timed"
+        pieces.append(f"[{source_label}]setpts=PTS-STARTPTS,fps={fps:.6f}[{timed_label}]")
+        pieces.append(_section_graph(timed_label, key, section, width, out_height))
     pieces.append("[top][bottom]vstack=inputs=2[stacked]")
     if caption_input is None:
         pieces.append("[stacked]null[outv]")
@@ -102,8 +116,10 @@ def _render_caption_frames(snapshot: dict, job_id: str, fps: float, frame_count:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", job_id):
         raise ValueError("Render job ID is invalid.")
     track = snapshot.get("caption_track")
-    if not track or not track.get("segments"):
-        raise ValueError("Caption frame rendering requires a caption track with segments.")
+    custom_text = snapshot.get("clip", {}).get("custom_text")
+    has_custom_text = bool(custom_text and custom_text.get("enabled") and custom_text.get("text", "").strip())
+    if not (track and track.get("segments")) and not has_custom_text:
+        raise ValueError("Text frame rendering requires caption segments or enabled custom text.")
 
     script = Path(__file__).resolve().parents[3] / "frontend" / "scripts" / "render-captions.mjs"
     node = shutil.which(os.getenv("CLIPRA_CAPTION_RENDERER_NODE", "node"))
@@ -123,6 +139,7 @@ def _render_caption_frames(snapshot: dict, job_id: str, fps: float, frame_count:
     caption_scale = max(1, int(profile.get("width", WIDTH)) // 360)
     request = {
         "track": track,
+        "customText": custom_text,
         "clipStartSeconds": float(snapshot["clip"]["start_seconds"]),
         "durationSeconds": duration,
         "fps": fps,
@@ -216,24 +233,33 @@ def render(snapshot: dict, output: Path, *, job_id: str, progress_callback) -> N
     split_layout = snapshot["clip"].get("layout_type", "original") == "split_streamer_gameplay"
     caption_track = snapshot.get("caption_track")
     caption_frames: Path | None = None
-    if split_layout and snapshot["clip"]["split_layout"]["top"]["source_mode"] == "custom_image":
-        image = managed_path(snapshot["layout_image_relative_path"], must_exist=True)
-        fps = max(1.0, min(120.0, float(snapshot.get("source_frame_rate_decimal") or 30)))
-        command.extend(["-loop", "1", "-framerate", f"{fps:.6f}", "-i", str(image)])
+    image_inputs: dict[str, int] = {}
+    layout_images = snapshot.get("layout_image_relative_paths", {}) if split_layout else {}
+    if split_layout and not layout_images and snapshot.get("layout_image_relative_path"):
+        layout_images = {"top": snapshot["layout_image_relative_path"]}
+    for section_name in ("top", "bottom"):
+        relative_image = layout_images.get(section_name)
+        if relative_image:
+            image = managed_path(relative_image, must_exist=True)
+            fps = max(1.0, min(120.0, float(snapshot.get("source_frame_rate_decimal") or 30)))
+            command.extend(["-loop", "1", "-framerate", f"{fps:.6f}", "-i", str(image)])
+            image_inputs[section_name] = len(image_inputs) + 1
     fps = max(1.0, min(120.0, float(snapshot.get("source_frame_rate_decimal") or 30)))
     frame_count = max(1, round(float(duration) * fps))
-    if caption_track and caption_track.get("segments"):
+    custom_text = snapshot.get("clip", {}).get("custom_text")
+    has_custom_text = bool(custom_text and custom_text.get("enabled") and custom_text.get("text", "").strip())
+    if (caption_track and caption_track.get("segments")) or has_custom_text:
         caption_frames, _first_frame = _render_caption_frames(
             snapshot, job_id, fps, frame_count,
             lambda progress: progress_callback(progress),
         )
-        caption_input = 2 if split_layout and snapshot["clip"]["split_layout"]["top"]["source_mode"] == "custom_image" else 1
+        caption_input = len(image_inputs) + 1
         command.extend(["-framerate", f"{fps:.6f}", "-start_number", "0", "-i", str(caption_frames / "frame-%08d.png")])
     else:
         caption_input = None
     command.extend(["-t", f"{duration:.6f}"])
     if split_layout:
-        command.extend(["-filter_complex", split_filter_graph(snapshot, caption_input, width, height), "-map", "[outv]"])
+        command.extend(["-filter_complex", split_filter_graph(snapshot, caption_input, width, height, image_inputs), "-map", "[outv]"])
     elif caption_input is not None:
         command.extend(["-filter_complex", f"[0:v]{filter_graph(snapshot, width, height)}[base];[base][{caption_input}:v]overlay=0:0:format=auto:eof_action=pass[outv]", "-map", "[outv]"])
     else:

@@ -29,14 +29,21 @@ def capture(clip_id: str, caption_track_id: str | None = None, resolution: str =
             return None
         track = None
     split_layout = clip["split_layout"]
-    layout_image_relative_path = None
-    if clip["layout_type"] == "split_streamer_gameplay" and split_layout["top"]["source_mode"] == "custom_image":
-        asset_id = split_layout["top"].get("image_asset_id")
-        asset = get_layout_image(asset_id, clip_id) if asset_id else None
-        if not asset:
-            return None
-        managed_path(asset["relative_path"], must_exist=True)
-        layout_image_relative_path = asset["relative_path"]
+    layout_images = {}
+    if clip["layout_type"] == "split_streamer_gameplay":
+        for section_name in ("top", "bottom"):
+            section = split_layout[section_name]
+            section.setdefault("source_mode", "same_video")
+            section.setdefault("image_asset_id", None)
+            section.setdefault("solid_color", "#151923")
+            if section["source_mode"] != "custom_image":
+                continue
+            asset_id = section.get("image_asset_id")
+            asset = get_layout_image(asset_id, clip_id) if asset_id else None
+            if not asset:
+                return None
+            managed_path(asset["relative_path"], must_exist=True)
+            layout_images[section_name] = asset["relative_path"]
     clip_snapshot = dict(clip)
     dimensions = {"1080": (1080, 1920), "1440": (1440, 2560)}
     if resolution not in dimensions:
@@ -58,6 +65,9 @@ def capture(clip_id: str, caption_track_id: str | None = None, resolution: str =
         clip_snapshot.pop("split_layout", None)
     else:
         snapshot["source_frame_rate_decimal"] = media["frame_rate_decimal"] or 30
-        snapshot["layout_image_relative_path"] = layout_image_relative_path
+        snapshot["layout_image_relative_paths"] = layout_images
+        # Keep the original top-image snapshot field readable by older snapshots/tools.
+        if "top" in layout_images:
+            snapshot["layout_image_relative_path"] = layout_images["top"]
     return snapshot
 

@@ -2,8 +2,8 @@ import type { SplitLayout } from './api'
 
 export const DEFAULT_SPLIT_LAYOUT: SplitLayout = {
   split_ratio: 0.5,
-  top: { source_mode: 'same_video', image_asset_id: null, solid_color: '#151923', framing_mode: 'crop', zoom: 1, position_x: 0.5, position_y: 0.5, fit_background_color: '#090a0f' },
-  bottom: { framing_mode: 'crop', zoom: 1, position_x: 0.5, position_y: 0.5, fit_background_color: '#090a0f' },
+  top: { source_mode: 'same_video', image_asset_id: null, solid_color: '#151923', framing_mode: 'crop', vertical_crop_percent: 0, zoom: 1, position_x: 0.5, position_y: 0.5, fit_background_color: '#090a0f' },
+  bottom: { source_mode: 'same_video', image_asset_id: null, solid_color: '#151923', framing_mode: 'crop', vertical_crop_percent: 0, zoom: 1, position_x: 0.5, position_y: 0.5, fit_background_color: '#090a0f' },
 }
 
 export type SplitSectionKey = 'top' | 'bottom'

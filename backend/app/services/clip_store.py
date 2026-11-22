@@ -6,13 +6,14 @@ import json
 from uuid import uuid4
 
 from app.db.database import connect
-from app.models.schemas import SplitLayoutConfig
+from app.models.schemas import CustomTextConfig, SplitLayoutConfig
 from app.services.project_store import utc_now
 
 
 def _clip(row, focal_rows) -> dict:
     result = dict(row)
     result["split_layout"] = SplitLayoutConfig.model_validate(json.loads(result.pop("split_layout_json", "{}") or "{}" )).model_dump()
+    result["custom_text"] = CustomTextConfig.model_validate(json.loads(result.pop("custom_text_json", "{}") or "{}" )).model_dump()
     result["focal_points"] = [dict(point) for point in focal_rows]
     return result
 
@@ -42,13 +43,14 @@ def create_clip(*, project_id: str, media_id: str, title: str, start: float, end
 
 
 def update_clip(clip_id: str, fields: dict):
-    allowed = {"title", "start_seconds", "end_seconds", "framing_mode", "manual_focus_x", "manual_focus_y", "manual_zoom", "blur_strength", "fit_background_color", "manual_override_enabled", "layout_type", "split_layout"}
+    allowed = {"title", "start_seconds", "end_seconds", "framing_mode", "manual_focus_x", "manual_focus_y", "manual_zoom", "vertical_crop_percent", "blur_strength", "fit_background_color", "manual_override_enabled", "layout_type", "split_layout", "custom_text"}
     values = []
     for key, value in fields.items():
         if key not in allowed or value is None:
             continue
-        if key == "split_layout":
-            values.append(("split_layout_json", json.dumps(value, sort_keys=True, separators=(",", ":"))))
+        if key in {"split_layout", "custom_text"}:
+            column = "split_layout_json" if key == "split_layout" else "custom_text_json"
+            values.append((column, json.dumps(value, sort_keys=True, separators=(",", ":"))))
         else:
             values.append((key, value))
     if values:

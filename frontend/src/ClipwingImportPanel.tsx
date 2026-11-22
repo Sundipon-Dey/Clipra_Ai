@@ -92,8 +92,8 @@ export default function ClipwingImportPanel({ projectId, onOpenClip, onProjectCh
             {job.formats.length > 0 && <label className="clipwing-format-field">Format and resolution<select aria-label={`Format and resolution for ${entry.title}`} value={formatId} disabled={entry.status === 'cutting' || entry.status === 'ready'} onChange={(event) => setFormatsByEntry((current) => ({ ...current, [entry.id]: event.target.value }))}>{job.formats.map((format) => <option key={format.format_id} value={format.format_id}>{format.label}{prettyBytes(format.filesize_bytes)}</option>)}</select>{selectedFormat && <small>Selected source: {selectedFormat.width ?? '?'} × {selectedFormat.height} · output: MP4 H.264/AAC</small>}</label>}
             <div className="clipwing-entry-progress"><div><span>{entry.status === 'cutting' ? 'Clip download progress' : entry.status === 'ready' ? 'Download complete' : 'Clip download progress'}</span><span>{Math.round(entry.progress * 100)}%</span></div><progress max={1} value={entry.progress}/></div>
           </div>
+          </div>
           <div className="clipwing-entry-actions">{entry.status === 'ready' && entry.media_id && entry.clip_id ? <button className="button secondary small" onClick={() => onOpenClip(entry)}>Edit clip <ExternalLink size={13}/></button> : <button className="button secondary small" disabled={!canDownload} onClick={() => void downloadEntry(job, entry, formatId)}><Download size={13}/>{entry.status === 'failed' || entry.status === 'interrupted' ? 'Retry download' : 'Download clip'}</button>}</div>
-        </div>
         </div>
       })}</div>
     </article>)}</div>}

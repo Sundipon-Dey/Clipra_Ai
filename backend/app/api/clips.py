@@ -57,9 +57,10 @@ def patch_clip(clip_id: str, payload: ClipUpdate):
         raise HTTPException(status_code=422, detail="Choose Smart Crop, Fit / Original, Blurred Background, or Manual Crop.")
     split_layout = fields.get("split_layout")
     if split_layout:
-        image_id = split_layout["top"].get("image_asset_id")
-        if image_id and not get_layout_image(image_id, clip_id):
-            raise HTTPException(status_code=422, detail="The selected custom image does not belong to this clip.")
+        for section in (split_layout["top"], split_layout["bottom"]):
+            image_id = section.get("image_asset_id")
+            if section.get("source_mode") == "custom_image" and (not image_id or not get_layout_image(image_id, clip_id)):
+                raise HTTPException(status_code=422, detail="A selected custom image does not belong to this clip.")
     start = fields.get("start_seconds", clip["start_seconds"])
     end = fields.get("end_seconds", clip["end_seconds"])
     media = _duration(clip["media_id"])

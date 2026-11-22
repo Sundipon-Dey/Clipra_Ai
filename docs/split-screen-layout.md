@@ -4,8 +4,8 @@ The optional split layout is part of the Stage 5 clip configuration. It renders 
 
 ## Editor behavior
 
-- Choose **Split-Screen Streamer + Gameplay** in the clip editor. The top section can show the synchronized source video, a custom still image, or a solid color; the bottom section shows the source video.
-- Select **Top · Streamer** or **Bottom · Gameplay** before changing section settings. Each section stores its own crop/fit mode, zoom, horizontal and vertical position, and fit background color. Top and bottom updates are separate values.
+- Choose **Split-Screen Streamer + Gameplay** in the clip editor. Each section can independently show the synchronized source video, its own managed custom still image, or a solid color.
+- Select **Top** or **Bottom** before changing section settings. Both sections expose the same independent crop/fit mode, top/bottom vertical trim, zoom, horizontal and vertical position, and fit background color. The source selector applies only to the top section.
 - Drag within a section in the preview to reposition that section. Drag the divider to change the top section's share of the output height (25–75%). Numeric position fields remain available.
 - Captions render over the completed composition. For custom-image layouts, the source video's audio is the only audio stream mapped.
 - The top solid-color option provides a color picker. Framing and zoom controls are hidden while this source is selected because there is no image content to frame.
