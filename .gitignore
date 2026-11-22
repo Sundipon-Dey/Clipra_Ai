@@ -3,6 +3,8 @@ node_modules/
 __pycache__/
 *.pyc
 .env
+backend/secrets/
+private/
 *.mp4
 *.mkv
 *.mov

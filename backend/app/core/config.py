@@ -35,6 +35,7 @@ class Settings:
     transcription_max_seconds: int
     transcription_timeout_seconds: int
     transcription_model: str
+    youtube_client_secrets_file: Path
 
     @property
     def projects_dir(self) -> Path:
@@ -89,4 +90,5 @@ settings = Settings(
     transcription_max_seconds=max(1, int(os.getenv("CLIPRA_TRANSCRIPTION_MAX_SECONDS", "900"))),
     transcription_timeout_seconds=max(60, int(os.getenv("CLIPRA_TRANSCRIPTION_TIMEOUT_SECONDS", "3600"))),
     transcription_model=os.getenv("CLIPRA_TRANSCRIPTION_MODEL", "small.en").strip() or "small.en",
+    youtube_client_secrets_file=Path(os.getenv("YOUTUBE_CLIENT_SECRETS_FILE") or str(REPOSITORY_ROOT / "backend" / "secrets" / "youtube-oauth-client.json")).expanduser().resolve(),
 )

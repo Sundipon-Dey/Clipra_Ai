@@ -298,6 +298,33 @@ class SocialContentGenerationOut(BaseModel):
     packages: dict[str, dict[str, Any]] | None = None
 
 
+class YouTubeStatusOut(BaseModel):
+    configured: bool
+    connected: bool
+    authorization_pending: bool = False
+    message: str
+
+
+class YouTubeUploadStart(BaseModel):
+    generation_id: str
+    privacy_status: Literal["private", "unlisted", "public"] = "private"
+
+
+class YouTubeUploadOut(BaseModel):
+    id: str
+    render_job_id: str
+    generation_id: str
+    status: Literal["queued", "uploading", "completed", "failed", "interrupted"]
+    progress: float
+    stage: str
+    privacy_status: Literal["private", "unlisted", "public"]
+    video_id: str | None
+    video_url: str | None = None
+    error_message: str | None
+    created_at: str
+    completed_at: str | None
+
+
 class FramingSuggestionRequest(BaseModel):
     consent_to_send_frames: bool
     retry: bool = False

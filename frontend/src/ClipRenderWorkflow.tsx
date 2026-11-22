@@ -25,12 +25,14 @@ export default function ClipRenderWorkflow({ clip, captionTrackId, sourceWidth, 
   const exports = exportJobs.filter((job) => job.status === 'completed').sort((a, b) => (b.version_number ?? 0) - (a.version_number ?? 0))
   const latestCompletedExport = exports[0]
   const nextVersion = Math.max(0, ...exportJobs.map((job) => job.version_number ?? 0)) + 1
+  const socialExport = exports.find((job) => job.id === socialRenderJobId)
   const startExport = async () => {
     setBusy(true); setError('')
     try { const job = await requestClipExport(clip.id, captionTrackId, resolution); setJobs((current) => [job, ...current]) }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not start the export.') }
     finally { setBusy(false) }
   }
+  if (socialExport) return <main className="clip-editor-backdrop social-content-backdrop"><SocialContentPanel key={socialExport.id} renderJobId={socialExport.id} version={socialExport.version_number ?? 0} clipTitle={clip.title} videoUrl={socialExport.stream_url ? mediaUrl(socialExport.stream_url) : undefined} onBack={() => setSocialRenderJobId('')} /></main>
   return <main className="clip-editor-backdrop clip-editor-page"><section className="clip-editor render-workspace" aria-labelledby="render-title">
     <header className="clip-editor-header"><div><p className="eyebrow">STAGE 5 · EXPORT</p><h2 id="render-title">Export your clip</h2><span>{clip.title} · 9:16 · source video remains unchanged</span></div><button className="button secondary" onClick={onEdit}><ArrowLeft size={15}/> Reopen in Editor</button></header>
     <div className="render-workspace-body">
@@ -42,9 +44,8 @@ export default function ClipRenderWorkflow({ clip, captionTrackId, sourceWidth, 
         {latestExport && <JobProgress job={latestExport} label={`Export V${latestExport.version_number ?? ''}`}/>}
         {error && <p role="alert" className="framing-error">{error}</p>}
       </div>
-      <aside className="render-history"><h3>Export versions</h3>{exports.length ? exports.map((job) => <article className="render-version" key={job.id}><div><strong>V{job.version_number} · {job.resolution}p</strong><small>{new Date(job.completed_at ?? job.created_at).toLocaleString()}</small></div><div className="render-version-actions"><a className="button secondary small" href={mediaUrl(job.stream_url!)} target="_blank" rel="noreferrer">Play</a><a className="button secondary small" href={mediaUrl(job.download_url!)}><Download size={13}/> Download</a><button className="button secondary small" aria-expanded={socialRenderJobId === job.id} onClick={() => setSocialRenderJobId((current) => current === job.id ? '' : job.id)}>Social content</button></div></article>) : <p className="render-history-empty">Completed exports will appear here. Each version is kept separately.</p>}{jobs.filter((job) => job.kind === 'export' && job.status === 'failed').map((job) => <p className="framing-error" key={job.id}>V{job.version_number} failed: {job.error_message}</p>)}</aside>
+      <aside className="render-history"><h3>Export versions</h3>{exports.length ? exports.map((job) => <article className="render-version" key={job.id}><div><strong>V{job.version_number} · {job.resolution}p</strong><small>{new Date(job.completed_at ?? job.created_at).toLocaleString()}</small></div><div className="render-version-actions"><a className="button secondary small" href={mediaUrl(job.stream_url!)} target="_blank" rel="noreferrer">Play</a><a className="button secondary small" href={mediaUrl(job.download_url!)}><Download size={13}/> Download</a><button className="button secondary small" aria-label={`Open social content for export V${job.version_number}`} onClick={() => setSocialRenderJobId(job.id)}>Social content</button></div></article>) : <p className="render-history-empty">Completed exports will appear here. Each version is kept separately.</p>}{jobs.filter((job) => job.kind === 'export' && job.status === 'failed').map((job) => <p className="framing-error" key={job.id}>V{job.version_number} failed: {job.error_message}</p>)}</aside>
     </div>
-    {exports.map((job) => socialRenderJobId === job.id && <SocialContentPanel key={job.id} renderJobId={job.id} version={job.version_number ?? 0} />)}
   </section></main>
 }
 

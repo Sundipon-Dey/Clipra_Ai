@@ -13,6 +13,7 @@ from app.api.projects import router as projects_router
 from app.api.renders import router as renders_router
 from app.api.layout_images import router as layout_images_router
 from app.api.social_content import router as social_content_router
+from app.api.youtube import router as youtube_router
 from app.core.config import settings
 from app.db.database import initialize_database
 from app.services.clipwing_queue import recover_queued_imports
@@ -21,6 +22,7 @@ from app.services.project_store import interrupt_legacy_gemini_runs
 from app.services.transcription_queue import recover_queued_transcriptions
 from app.services.render_queue import recover_queued_renders
 from app.services.social_content_queue import recover_social_generations
+from app.services.youtube_upload_store import interrupt_active as interrupt_youtube_uploads
 
 
 @asynccontextmanager
@@ -33,6 +35,7 @@ async def lifespan(_: FastAPI):
     recover_queued_transcriptions()
     recover_queued_renders()
     recover_social_generations()
+    interrupt_youtube_uploads()
     yield
 
 
@@ -75,3 +78,4 @@ app.include_router(captions_router)
 app.include_router(renders_router)
 app.include_router(layout_images_router)
 app.include_router(social_content_router)
+app.include_router(youtube_router)

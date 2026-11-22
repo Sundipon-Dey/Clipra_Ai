@@ -39,6 +39,7 @@ Edit `backend/.env` to configure local storage, upload limits, or tool locations
 
 ```dotenv
 CLIPRA_WORKSPACE_DIR=
+YOUTUBE_CLIENT_SECRETS_FILE=
 CLIPRA_MAX_UPLOAD_BYTES=21474836480
 CLIPRA_MAX_FILES_PER_IMPORT=20
 CLIPRA_MAX_LAYOUT_IMAGE_BYTES=26214400
@@ -192,6 +193,12 @@ Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs` w
 | GET | `/api/render-jobs/{render_job_id}/social-content-generations` | Read generation attempts and packages for an exact export version. |
 | GET | `/api/social-content-generations/{generation_id}` | Inspect social generation progress and saved package state. |
 | PATCH | `/api/social-content-generations/{generation_id}/platforms/{platform}` | Save user edits to one platform package. |
+| GET | `/api/social/youtube/status` | Check whether a local Desktop OAuth client is configured and YouTube is connected. |
+| POST | `/api/social/youtube/connect` | Open Google's Desktop OAuth consent in the system browser using PKCE and a random loopback port. |
+| DELETE | `/api/social/youtube/connection` | Revoke and remove the locally stored YouTube authorization. |
+| POST | `/api/social/youtube/exports/{render_job_id}/uploads` | Explicitly upload the selected completed export using its saved YouTube Shorts package and chosen privacy. |
+| GET | `/api/social/youtube/exports/{render_job_id}/uploads` | List uploads and progress for the exact export version. |
+| GET | `/api/social/youtube/uploads/{upload_id}` | Inspect one upload's state and final YouTube URL. |
 
 Stage 5 exports one clip at a time at 9:16. The Export page always offers 1080 x 1920 and offers 1440 x 2560 only when FFprobe reports the original upload is at least 1440p (both source dimensions are at least 1440 pixels). Lower-resolution uploads are limited to 1080p. A 1440p landscape source can still be upscaled after a vertical crop, so larger output dimensions do not restore cropped detail. Clicking **Export** is the explicit approval and starts the only render pass. The renderer uses the current saved framing and caption settings, including Chromium-rendered caption frames from the editor's `CaptionOverlay` CSS, with FFmpeg for video composition. Final exports use H.264 CRF 18 with the medium preset and AAC at 160 kb/s. The chosen output profile is stored in each immutable render snapshot, so versions can use different resolutions without changing the editable draft or prior exports. Each export is an immutable V1, V2, and later version; editing resumes on the same draft and never overwrites an earlier output. Source media and completed exports are not automatically deleted. Existing Stage 5 preview files are retained locally but are not generated or shown by the current workflow. Imported-media playback compatibility previews remain separate.
 
@@ -233,10 +240,12 @@ Backend tests generate short synthetic videos and images with FFmpeg locally. Th
 - Stage 4: local faster-whisper transcription and editable caption drafts (implemented; Stage 5 exports captions with the editor's Chromium component).
 - Stage 5: direct approved export, immutable versioned MP4s, playback/download, and editing after export (implemented; export uses H.264 CRF 18).
 - Stage 6: consented per-export Gemini social copy for TikTok, Instagram Reels, YouTube Shorts, and Facebook Reels, with persistent progress, editable packages, and explicit regeneration (implemented; automated tests mock Google and do not make billable requests).
+- Stage 7: user-connected YouTube account, reviewed YouTube Shorts package, explicit per-upload approval, privacy selection, resumable transfer, and per-export upload history (implemented; live Google authorization/upload requires your own credentials and has not been run here).
 - Split-Screen Streamer + Gameplay add-on after Stage 5: optional vertical same-video or custom-image composition integrated with direct Stage 5 exports (implemented; no face detection or batch workflow).
 
 See [Clipwing import details](docs/clipwing-import.md) for accepted input format, format selection, per-clip progress, storage behavior, and restart handling.
 See [Custom Text and Original Layout crop](docs/custom-text-and-original-crop.md) for the editor's independent text overlay and top/bottom crop controls.
 Split-screen top and bottom sections also have separate vertical trim controls; see [split-screen layout details](docs/split-screen-layout.md).
 See [Stage 6 social content](docs/stage6-social-content.md) for the per-export consent, upload, package editing, quota, and recovery behavior.
+See [YouTube publishing](docs/stage7-youtube-publishing.md) for credential placement, local token protection, upload behavior, Google Cloud test-mode limits, and API routes.
 

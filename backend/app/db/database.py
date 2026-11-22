@@ -308,7 +308,23 @@ def initialize_database() -> None:
             CREATE INDEX IF NOT EXISTS ix_social_content_queue ON social_content_generations(status, created_at);
             CREATE UNIQUE INDEX IF NOT EXISTS ux_social_content_active_per_export
                 ON social_content_generations(render_job_id) WHERE status IN ('queued','uploading','processing_file','generating');
-            PRAGMA user_version = 12;
+            CREATE TABLE IF NOT EXISTS youtube_uploads (
+                id TEXT PRIMARY KEY,
+                render_job_id TEXT NOT NULL REFERENCES render_jobs(id) ON DELETE RESTRICT,
+                generation_id TEXT NOT NULL REFERENCES social_content_generations(id) ON DELETE RESTRICT,
+                status TEXT NOT NULL CHECK(status IN ('queued','uploading','completed','failed','interrupted')),
+                progress REAL NOT NULL DEFAULT 0 CHECK(progress BETWEEN 0 AND 1),
+                stage TEXT NOT NULL DEFAULT 'queued',
+                privacy_status TEXT NOT NULL CHECK(privacy_status IN ('private','unlisted','public')),
+                video_id TEXT,
+                error_message TEXT,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS ix_youtube_uploads_render ON youtube_uploads(render_job_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS ix_youtube_uploads_status ON youtube_uploads(status, created_at);
+            PRAGMA user_version = 13;
             """
         )
         clip_columns = {row["name"] for row in connection.execute("PRAGMA table_info(clips)").fetchall()}

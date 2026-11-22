@@ -67,6 +67,8 @@ export type RenderJob = { id: string; clip_id: string; project_id: string; kind:
 export type SocialPlatform = 'tiktok' | 'instagram_reels' | 'youtube_shorts' | 'facebook_reels'
 export type SocialPackage = Record<string, string | string[]>
 export type SocialContentGeneration = { id: string; render_job_id: string; status: 'queued' | 'uploading' | 'processing_file' | 'generating' | 'completed' | 'failed' | 'interrupted'; progress: number; stage: string; model_name: string; prompt_version: string; error_code: string | null; error_message: string | null; cleanup_pending: boolean; created_at: string; completed_at: string | null; generated_packages: Record<SocialPlatform, SocialPackage> | null; packages: Record<SocialPlatform, SocialPackage> | null }
+export type YouTubeStatus = { configured: boolean; connected: boolean; authorization_pending: boolean; message: string }
+export type YouTubeUpload = { id: string; render_job_id: string; generation_id: string; status: 'queued' | 'uploading' | 'completed' | 'failed' | 'interrupted'; progress: number; stage: string; privacy_status: 'private' | 'unlisted' | 'public'; video_id: string | null; video_url: string | null; error_message: string | null; created_at: string; completed_at: string | null }
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000').replace(/\/$/, '')
 
@@ -179,4 +181,10 @@ export const getSocialContentHistory = (renderJobId: string) => request<SocialCo
 export const startSocialContentGeneration = (renderJobId: string) => request<SocialContentGeneration>(`/api/render-jobs/${encodeURIComponent(renderJobId)}/social-content-generations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consent_to_upload_video: true }) })
 export const getSocialContentGeneration = (id: string) => request<SocialContentGeneration>(`/api/social-content-generations/${encodeURIComponent(id)}`)
 export const saveSocialPackage = (id: string, platform: SocialPlatform, content: SocialPackage) => request<SocialContentGeneration>(`/api/social-content-generations/${encodeURIComponent(id)}/platforms/${platform}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) })
+export const getYouTubeStatus = () => request<YouTubeStatus>('/api/social/youtube/status')
+export const connectYouTube = () => request<{ status: string; message: string }>('/api/social/youtube/connect', { method: 'POST' })
+export const disconnectYouTube = () => request<YouTubeStatus>('/api/social/youtube/connection', { method: 'DELETE' })
+export const getYouTubeUploads = (renderJobId: string) => request<YouTubeUpload[]>(`/api/social/youtube/exports/${encodeURIComponent(renderJobId)}/uploads`)
+export const startYouTubeUpload = (renderJobId: string, generationId: string, privacyStatus: YouTubeUpload['privacy_status']) => request<YouTubeUpload>(`/api/social/youtube/exports/${encodeURIComponent(renderJobId)}/uploads`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ generation_id: generationId, privacy_status: privacyStatus }) })
+export const getYouTubeUpload = (uploadId: string) => request<YouTubeUpload>(`/api/social/youtube/uploads/${encodeURIComponent(uploadId)}`)
 
