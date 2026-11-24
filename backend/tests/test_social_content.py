@@ -18,7 +18,7 @@ from app.services.render_store import get as get_render
 
 def _packages():
     short = {"caption": "A caption", "opening_hook": "Wait for it", "hashtags": ["#clip"], "suggested_keywords": ["gameplay"], "alternate_caption": "Another caption"}
-    return {"tiktok": short, "instagram_reels": short, "facebook_reels": short,
+    return {"instagram_reels": short, "facebook_reels": short,
             "youtube_shorts": {"title": "A short", "description": "Description", "hashtags": ["#shorts"], "tags": ["gameplay"], "alternate_title": "Other title"}}
 
 
@@ -45,9 +45,9 @@ def _completed_export(client, tmp_path: Path):
 
 def test_validate_social_packages_requires_all_platforms_and_exact_fields():
     validated = validate_packages(_packages())
-    assert set(validated) == {"tiktok", "instagram_reels", "youtube_shorts", "facebook_reels"}
+    assert set(validated) == {"instagram_reels", "youtube_shorts", "facebook_reels"}
     invalid = _packages()
-    invalid["tiktok"]["unexpected"] = "not allowed"
+    invalid["instagram_reels"]["unexpected"] = "not allowed"
     try:
         validate_packages(invalid)
         assert False, "unexpected fields should fail validation"
@@ -80,15 +80,15 @@ def test_generation_persists_output_and_user_edits_without_overwriting_original(
     with connect() as db:
         db.execute("UPDATE social_content_generations SET status='completed',packages_json=?,progress=1 WHERE id=?",
                    (json.dumps(_packages()), generation_id))
-    edit = _packages()["tiktok"] | {"caption": "My final caption"}
-    saved = client.patch(f"/api/social-content-generations/{generation_id}/platforms/tiktok", json={"content": edit})
+    edit = _packages()["instagram_reels"] | {"caption": "My final caption"}
+    saved = client.patch(f"/api/social-content-generations/{generation_id}/platforms/instagram_reels", json={"content": edit})
     assert saved.status_code == 200
-    assert saved.json()["packages"]["tiktok"]["caption"] == "My final caption"
-    assert saved.json()["generated_packages"]["tiktok"]["caption"] == "A caption"
+    assert saved.json()["packages"]["instagram_reels"]["caption"] == "My final caption"
+    assert saved.json()["generated_packages"]["instagram_reels"]["caption"] == "A caption"
 
     history = client.get(f"/api/render-jobs/{render_job_id}/social-content-generations")
     assert history.status_code == 200
-    assert history.json()[0]["packages"]["tiktok"]["caption"] == "My final caption"
+    assert history.json()[0]["packages"]["instagram_reels"]["caption"] == "My final caption"
 
 
 def test_package_edit_rejects_unknown_keys(client, tmp_path, monkeypatch):
@@ -96,8 +96,8 @@ def test_package_edit_rejects_unknown_keys(client, tmp_path, monkeypatch):
     render_job_id = _completed_export(client, tmp_path)
     monkeypatch.setattr("app.api.social_content.enqueue", lambda _generation_id: None)
     generation = client.post(f"/api/render-jobs/{render_job_id}/social-content-generations", json={"consent_to_upload_video": True}).json()
-    invalid = _packages()["tiktok"] | {"unexpected": "value"}
-    result = client.patch(f"/api/social-content-generations/{generation['id']}/platforms/tiktok", json={"content": invalid})
+    invalid = _packages()["instagram_reels"] | {"unexpected": "value"}
+    result = client.patch(f"/api/social-content-generations/{generation['id']}/platforms/instagram_reels", json={"content": invalid})
     assert result.status_code == 422
 
 
@@ -182,7 +182,7 @@ def test_failed_generation_can_copy_exact_prompt_and_import_manual_packages(clie
 
     prompt = client.get(f"/api/social-content-generations/{generation_id}/manual-prompt")
     assert prompt.status_code == 200
-    assert "tiktok, instagram_reels, youtube_shorts, facebook_reels" in prompt.json()["prompt"]
+    assert "instagram_reels, youtube_shorts, facebook_reels" in prompt.json()["prompt"]
     assert "opening_hook" in prompt.json()["prompt"] and "alternate_title" in prompt.json()["prompt"]
     assert "The actual words." in prompt.json()["prompt"]
     assert "Return ONLY one valid JSON object" in prompt.json()["prompt"]
@@ -196,7 +196,7 @@ def test_failed_generation_can_copy_exact_prompt_and_import_manual_packages(clie
     body = imported.json()
     assert body["status"] == "completed"
     assert body["model_name"] == "manual-fallback"
-    assert body["packages"]["tiktok"]["caption"] == "A caption"
+    assert body["packages"]["instagram_reels"]["caption"] == "A caption"
     assert body["packages"]["youtube_shorts"]["title"] == "A short"
     assert body["cleanup_pending"] is True
     assert body["error_message"] is None

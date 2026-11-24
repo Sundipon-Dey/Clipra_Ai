@@ -8,7 +8,7 @@ Stage 6 creates editable post copy for one completed export version. It does not
 2. Review the disclosure. For every generation, check the consent box to authorize sending that version's completed MP4 and its listed context to Google Gemini. Prior consent is not reused.
 3. CLIPRA validates the immutable export path in managed storage, the MP4 extension, file size, and completed render status. The selected export is uploaded through Google's Files API and CLIPRA waits until its state is `ACTIVE`; the original source video is not substituted.
 4. The configured `GEMINI_MODEL` receives the file reference and version-specific context through the SDK's `models.generate_content` call with a JSON response schema. Clipwing clips include their saved moment information and supplied URL/quote where available. Local uploads include the selected export's caption text where present. The original YouTube URL is context only; CLIPRA does not rely on Gemini to fetch it.
-5. Review the TikTok, Instagram Reels, YouTube Shorts, and Facebook Reels packages. Edit and save text, copy a field or package, or explicitly generate another attempt.
+5. Review the Instagram Reels, YouTube Shorts, and Facebook Reels packages. Edit and save text, copy a field or package, or explicitly generate another attempt.
 
 ## Manual AI fallback
 

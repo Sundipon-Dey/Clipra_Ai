@@ -3,7 +3,7 @@ import type { CaptionTrack } from './api'
 
 type Props = { track: CaptionTrack | null; clipStart: number; currentSourceTime: number; editing: boolean; onPosition: (x: number, y: number, commit: boolean) => void; canvasPassthrough?: boolean }
 
-const safeZones = { shorts: { top: .08, bottom: .17 }, reels: { top: .1, bottom: .18 }, tiktok: { top: .1, bottom: .22 }, facebook: { top: .08, bottom: .17 } }
+const safeZones = { shorts: { top: .08, bottom: .17 }, reels: { top: .1, bottom: .18 }, facebook: { top: .08, bottom: .17 } }
 
 export default function CaptionOverlay({ track, clipStart, currentSourceTime, editing, onPosition, canvasPassthrough = false }: Props) {
   const overlay = useRef<HTMLDivElement>(null)
@@ -36,7 +36,8 @@ export default function CaptionOverlay({ track, clipStart, currentSourceTime, ed
     if (!editing || !event.currentTarget.hasPointerCapture?.(event.pointerId)) return
     position(event)
   }
-  const zone = safeZones[track.safe_zone_profile]
+  // Existing local tracks may still contain a retired safe-zone value.
+  const zone = safeZones[track.safe_zone_profile] ?? safeZones.reels
   return <div ref={overlay} className={`caption-overlay ${editing ? 'editing' : ''} ${canvasPassthrough ? 'canvas-passthrough' : ''} ${dragging.current ? 'dragging' : ''}`} onPointerDown={(event) => { dragging.current = true; position(event) }} onPointerMove={move} onPointerUp={(event) => position(event, true)} onPointerCancel={(event) => position(event, true)}>
     {editing && <><i className="caption-safe-zone top" style={{ height: `${zone.top * 100}%` }}/><i className="caption-safe-zone bottom" style={{ height: `${zone.bottom * 100}%` }}/></>}
     {editing && dragging.current && <><i className="caption-align-guide vertical"/><i className="caption-align-guide horizontal"/></>}

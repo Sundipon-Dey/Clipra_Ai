@@ -108,7 +108,7 @@ def import_manual_packages(generation_id: str, packages: dict) -> dict | None:
         db.execute(
             """UPDATE social_content_generations
                SET status='completed',stage='completed',progress=1,model_name='manual-fallback',
-                   prompt_version='stage6-social-manual-v1',packages_json=?,edited_packages_json='{}',
+                   prompt_version='stage6-social-manual-v2',packages_json=?,edited_packages_json='{}',
                    error_code=NULL,error_message=NULL,completed_at=?
                WHERE id=? AND status='failed'""",
             (json.dumps(packages, ensure_ascii=False, separators=(",", ":")), utc_now(), generation_id),

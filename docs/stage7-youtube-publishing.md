@@ -1,6 +1,6 @@
 # Stage 7: YouTube publishing
 
-Stage 7 adds a real YouTube upload path for one completed Stage 5 export. It uses the reviewed and saved **YouTube Shorts** package for that exact export version. TikTok, Instagram, and Facebook remain copy-only in this stage.
+Stage 7 adds a real YouTube upload path for one completed Stage 5 export. It uses the reviewed and saved **YouTube Shorts** package for that exact export version. Instagram and Facebook remain copy-only in this stage.
 
 ## One-time local setup
 

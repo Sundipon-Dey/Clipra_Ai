@@ -16,7 +16,7 @@ PRESETS: dict[str, dict] = {
     "minimal_lower_third": {"name": "Minimal Lower Third", "font_family": "Arial", "font_weight": 600, "font_size": 52, "text_color": "#FFFFFF", "highlight_color": "#FFFFFF", "outline_color": "#000000", "outline_width": 2, "shadow_color": "#000000", "shadow_offset": 2, "background_color": "#000000", "background_opacity": 0, "alignment": "center", "animation": "fade", "animation_ms": 120},
 }
 ALLOWED_ANIMATIONS = {"none", "fade", "pop", "karaoke", "pop_karaoke"}
-ALLOWED_SAFE_ZONES = {"shorts", "reels", "tiktok", "facebook"}
+ALLOWED_SAFE_ZONES = {"shorts", "reels", "facebook"}
 
 
 def preset_style(preset_id: str) -> dict:

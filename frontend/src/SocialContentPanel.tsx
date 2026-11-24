@@ -8,18 +8,12 @@ import {
 } from './api'
 
 const platforms: { id: SocialPlatform; label: string; detail: string }[] = [
-  { id: 'tiktok', label: 'TikTok', detail: 'Hook-first caption' },
   { id: 'instagram_reels', label: 'Instagram Reels', detail: 'Reel caption & tags' },
   { id: 'youtube_shorts', label: 'YouTube Shorts', detail: 'Title & description' },
   { id: 'facebook_reels', label: 'Facebook Reels', detail: 'Post copy & tags' },
 ]
 
 const fields: Record<SocialPlatform, { key: string; label: string; multiline?: boolean; list?: boolean }[]> = {
-  tiktok: [
-    { key: 'opening_hook', label: 'Opening hook' }, { key: 'caption', label: 'Caption', multiline: true },
-    { key: 'hashtags', label: 'Hashtags', list: true, multiline: true }, { key: 'suggested_keywords', label: 'Suggested keywords', list: true, multiline: true },
-    { key: 'alternate_caption', label: 'Alternate caption', multiline: true },
-  ],
   instagram_reels: [
     { key: 'opening_hook', label: 'Opening hook' }, { key: 'caption', label: 'Caption', multiline: true },
     { key: 'hashtags', label: 'Hashtags', list: true, multiline: true }, { key: 'suggested_keywords', label: 'Suggested keywords', list: true, multiline: true },
@@ -44,7 +38,7 @@ function PlatformIcon({ platform }: { platform: SocialPlatform }) {
   if (platform === 'instagram_reels') return <svg viewBox="0 0 24 24" aria-hidden="true" className="brand-instagram"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.7" cy="6.7" r=".9" className="brand-instagram-dot"/></svg>
   if (platform === 'youtube_shorts') return <svg viewBox="0 0 24 24" aria-hidden="true" className="brand-youtube"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 8.7 5.5 3.3-5.5 3.3z"/></svg>
   if (platform === 'facebook_reels') return <svg viewBox="0 0 24 24" aria-hidden="true" className="brand-facebook"><path d="M13.4 21v-7.2h2.5l.4-2.9h-2.9V9.1c0-.9.3-1.5 1.5-1.5h1.5V5a20 20 0 0 0-2.2-.1c-2.3 0-3.9 1.4-3.9 4.1v1.9H7.7v2.9h2.6V21z"/></svg>
-  return <svg viewBox="0 0 24 24" aria-hidden="true" className="brand-tiktok"><path className="brand-tiktok-cyan" d="M19.8 7.2a6.2 6.2 0 0 1-4-2V15a6.2 6.2 0 1 1-5.4-6.15v3.25a3 3 0 1 0 2.2 2.9V2.5h3.2a6.1 6.1 0 0 0 4 4.35v.35Z"/><path className="brand-tiktok-pink" d="M19.8 7.2a6.2 6.2 0 0 1-4-2V15a6.2 6.2 0 1 1-5.4-6.15v3.25a3 3 0 1 0 2.2 2.9V2.5h3.2a6.1 6.1 0 0 0 4 4.35v.35Z"/><path className="brand-tiktok-white" d="M19.8 7.2a6.2 6.2 0 0 1-4-2V15a6.2 6.2 0 1 1-5.4-6.15v3.25a3 3 0 1 0 2.2 2.9V2.5h3.2a6.1 6.1 0 0 0 4 4.35v.35Z"/></svg>
+  return null
 }
 
 type Props = {
@@ -58,7 +52,7 @@ type Props = {
 export default function SocialContentPanel({ renderJobId, version, clipTitle = 'Your clip', videoUrl, onBack }: Props) {
   const [history, setHistory] = useState<SocialContentGeneration[]>([])
   const [selectedId, setSelectedId] = useState('')
-  const [platform, setPlatform] = useState<SocialPlatform>('tiktok')
+  const [platform, setPlatform] = useState<SocialPlatform>('instagram_reels')
   const [drafts, setDrafts] = useState<Partial<Record<SocialPlatform, SocialPackage>>>({})
   const [consent, setConsent] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -181,7 +175,7 @@ export default function SocialContentPanel({ renderJobId, version, clipTitle = '
       const generation = await startSocialContentGeneration(renderJobId)
       setHistory((current) => [generation, ...current])
       setSelectedId(generation.id)
-      setPlatform('tiktok')
+      setPlatform('instagram_reels')
       setConsent(false)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not start generation.') }
     finally { setBusy(false) }
@@ -213,7 +207,7 @@ export default function SocialContentPanel({ renderJobId, version, clipTitle = '
       setSelectedId(updated.id)
       setDrafts(Object.fromEntries(platforms.map(({ id }) => [id, updated.packages?.[id] ? structuredClone(updated.packages[id]) : {}])) as Partial<Record<SocialPlatform, SocialPackage>>)
       initializedGeneration.current = updated.id
-      setManualOutput(''); setManualOpen(false); setPlatform('tiktok')
+      setManualOutput(''); setManualOpen(false); setPlatform('instagram_reels')
       setNotice('AI output imported. Review and save each platform package before publishing.')
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import the AI output.') }
     finally { setManualBusy(false) }
