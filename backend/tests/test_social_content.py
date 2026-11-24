@@ -168,3 +168,38 @@ def test_restart_marks_billable_work_interrupted_and_does_not_queue_retry(client
     record = get_generation(generation_id)
     assert record["status"] == "interrupted"
     assert record["error_code"] == "process_restarted"
+
+
+def test_failed_generation_can_copy_exact_prompt_and_import_manual_packages(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "gemini_api_key", "")
+    render_job_id = _completed_export(client, tmp_path)
+    monkeypatch.setattr("app.api.social_content.enqueue", lambda _generation_id: None)
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+    generation = client.post(f"/api/render-jobs/{render_job_id}/social-content-generations", json={"consent_to_upload_video": True}).json()
+    generation_id = generation["id"]
+    with connect() as db:
+        db.execute("UPDATE social_content_generations SET status='failed',stage='failed',error_message='Gemini unavailable',cleanup_pending=1 WHERE id=?", (generation_id,))
+
+    prompt = client.get(f"/api/social-content-generations/{generation_id}/manual-prompt")
+    assert prompt.status_code == 200
+    assert "tiktok, instagram_reels, youtube_shorts, facebook_reels" in prompt.json()["prompt"]
+    assert "opening_hook" in prompt.json()["prompt"] and "alternate_title" in prompt.json()["prompt"]
+    assert "The actual words." in prompt.json()["prompt"]
+    assert "Return ONLY one valid JSON object" in prompt.json()["prompt"]
+
+    invalid = client.post(f"/api/social-content-generations/{generation_id}/manual-import", json={"output": "not json"})
+    assert invalid.status_code == 422
+    assert client.get(f"/api/social-content-generations/{generation_id}").json()["status"] == "failed"
+
+    imported = client.post(f"/api/social-content-generations/{generation_id}/manual-import", json={"output": json.dumps(_packages())})
+    assert imported.status_code == 200
+    body = imported.json()
+    assert body["status"] == "completed"
+    assert body["model_name"] == "manual-fallback"
+    assert body["packages"]["tiktok"]["caption"] == "A caption"
+    assert body["packages"]["youtube_shorts"]["title"] == "A short"
+    assert body["cleanup_pending"] is True
+    assert body["error_message"] is None
+
+    duplicate = client.post(f"/api/social-content-generations/{generation_id}/manual-import", json={"output": json.dumps(_packages())})
+    assert duplicate.status_code == 409

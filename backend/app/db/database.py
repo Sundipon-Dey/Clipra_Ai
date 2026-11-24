@@ -324,7 +324,47 @@ def initialize_database() -> None:
             );
             CREATE INDEX IF NOT EXISTS ix_youtube_uploads_render ON youtube_uploads(render_job_id, created_at DESC);
             CREATE INDEX IF NOT EXISTS ix_youtube_uploads_status ON youtube_uploads(status, created_at);
-            PRAGMA user_version = 13;
+            CREATE TABLE IF NOT EXISTS facebook_uploads (
+                id TEXT PRIMARY KEY,
+                render_job_id TEXT NOT NULL REFERENCES render_jobs(id) ON DELETE RESTRICT,
+                generation_id TEXT NOT NULL REFERENCES social_content_generations(id) ON DELETE RESTRICT,
+                page_id TEXT NOT NULL,
+                page_name TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('queued','uploading','completed','failed','interrupted')),
+                progress REAL NOT NULL DEFAULT 0 CHECK(progress BETWEEN 0 AND 1),
+                stage TEXT NOT NULL DEFAULT 'queued',
+                video_id TEXT,
+                post_id TEXT,
+                error_message TEXT,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS ix_facebook_uploads_render ON facebook_uploads(render_job_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS ix_facebook_uploads_status ON facebook_uploads(status, created_at);
+            CREATE TABLE IF NOT EXISTS instagram_uploads (
+                id TEXT PRIMARY KEY,
+                render_job_id TEXT NOT NULL REFERENCES render_jobs(id) ON DELETE RESTRICT,
+                generation_id TEXT NOT NULL REFERENCES social_content_generations(id) ON DELETE RESTRICT,
+                page_id TEXT NOT NULL,
+                page_name TEXT NOT NULL,
+                instagram_user_id TEXT NOT NULL,
+                instagram_username TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('queued','uploading','completed','failed','interrupted')),
+                progress REAL NOT NULL DEFAULT 0 CHECK(progress BETWEEN 0 AND 1),
+                stage TEXT NOT NULL DEFAULT 'queued',
+                media_id TEXT,
+                permalink TEXT,
+                container_id TEXT,
+                r2_object_key TEXT,
+                error_message TEXT,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS ix_instagram_uploads_render ON instagram_uploads(render_job_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS ix_instagram_uploads_status ON instagram_uploads(status, created_at);
+            PRAGMA user_version = 18;
             """
         )
         clip_columns = {row["name"] for row in connection.execute("PRAGMA table_info(clips)").fetchall()}
@@ -342,6 +382,14 @@ def initialize_database() -> None:
             connection.execute("ALTER TABLE clips ADD COLUMN framing_start_seconds REAL")
         if "framing_end_seconds" not in clip_columns:
             connection.execute("ALTER TABLE clips ADD COLUMN framing_end_seconds REAL")
+        instagram_columns = {row["name"] for row in connection.execute("PRAGMA table_info(instagram_uploads)").fetchall()}
+        if "diagnostic_variant" in instagram_columns:
+            connection.execute("ALTER TABLE instagram_uploads DROP COLUMN diagnostic_variant")
+        if "container_id" not in instagram_columns:
+            connection.execute("ALTER TABLE instagram_uploads ADD COLUMN container_id TEXT")
+        if "r2_object_key" not in instagram_columns:
+            connection.execute("ALTER TABLE instagram_uploads ADD COLUMN r2_object_key TEXT")
+        connection.execute("PRAGMA user_version = 18")
         if "fit_background_color" not in clip_columns:
             connection.execute("ALTER TABLE clips ADD COLUMN fit_background_color TEXT NOT NULL DEFAULT '#090a0f'")
         if "manual_override_enabled" not in clip_columns:

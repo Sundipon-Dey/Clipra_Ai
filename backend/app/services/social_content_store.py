@@ -98,6 +98,24 @@ def save_package(generation_id: str, platform: str, content: dict) -> dict | Non
     return get(generation_id)
 
 
+def import_manual_packages(generation_id: str, packages: dict) -> dict | None:
+    """Complete a failed attempt with user-supplied, already-validated packages."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute("SELECT status FROM social_content_generations WHERE id=?", (generation_id,)).fetchone()
+        if not row or row["status"] != "failed":
+            return None
+        db.execute(
+            """UPDATE social_content_generations
+               SET status='completed',stage='completed',progress=1,model_name='manual-fallback',
+                   prompt_version='stage6-social-manual-v1',packages_json=?,edited_packages_json='{}',
+                   error_code=NULL,error_message=NULL,completed_at=?
+               WHERE id=? AND status='failed'""",
+            (json.dumps(packages, ensure_ascii=False, separators=(",", ":")), utc_now(), generation_id),
+        )
+    return get(generation_id)
+
+
 def recovery_state() -> tuple[list[str], list[str]]:
     """Resume never-started work; interrupt active paid work and return cleanup ids."""
     with connect() as db:

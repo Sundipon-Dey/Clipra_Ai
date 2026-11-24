@@ -14,6 +14,8 @@ from app.api.renders import router as renders_router
 from app.api.layout_images import router as layout_images_router
 from app.api.social_content import router as social_content_router
 from app.api.youtube import router as youtube_router
+from app.api.facebook import router as facebook_router
+from app.api.instagram import router as instagram_router
 from app.core.config import settings
 from app.db.database import initialize_database
 from app.services.clipwing_queue import recover_queued_imports
@@ -23,6 +25,8 @@ from app.services.transcription_queue import recover_queued_transcriptions
 from app.services.render_queue import recover_queued_renders
 from app.services.social_content_queue import recover_social_generations
 from app.services.youtube_upload_store import interrupt_active as interrupt_youtube_uploads
+from app.services.facebook_upload_store import interrupt_active as interrupt_facebook_uploads
+from app.services.instagram_upload_store import interrupt_active as interrupt_instagram_uploads
 
 
 @asynccontextmanager
@@ -36,6 +40,8 @@ async def lifespan(_: FastAPI):
     recover_queued_renders()
     recover_social_generations()
     interrupt_youtube_uploads()
+    interrupt_facebook_uploads()
+    interrupt_instagram_uploads()
     yield
 
 
@@ -79,3 +85,5 @@ app.include_router(renders_router)
 app.include_router(layout_images_router)
 app.include_router(social_content_router)
 app.include_router(youtube_router)
+app.include_router(facebook_router)
+app.include_router(instagram_router)

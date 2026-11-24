@@ -281,6 +281,10 @@ class SocialPackageUpdate(BaseModel):
     content: dict[str, Any]
 
 
+class ManualSocialContentImport(BaseModel):
+    output: str = Field(min_length=1, max_length=100_000)
+
+
 class SocialContentGenerationOut(BaseModel):
     id: str
     render_job_id: str
@@ -320,6 +324,86 @@ class YouTubeUploadOut(BaseModel):
     privacy_status: Literal["private", "unlisted", "public"]
     video_id: str | None
     video_url: str | None = None
+    error_message: str | None
+    created_at: str
+    completed_at: str | None
+
+
+class FacebookPageOut(BaseModel):
+    id: str
+    name: str
+    instagram_user_id: str | None = None
+    instagram_username: str | None = None
+
+
+class FacebookStatusOut(BaseModel):
+    configured: bool
+    connected: bool
+    authorization_pending: bool = False
+    authorization_error: str | None = None
+    pages: list[FacebookPageOut] = Field(default_factory=list)
+    message: str
+
+
+class FacebookUploadStart(BaseModel):
+    generation_id: str
+    page_id: str = Field(min_length=1, max_length=80)
+
+
+class FacebookUploadOut(BaseModel):
+    id: str
+    render_job_id: str
+    generation_id: str
+    page_id: str
+    page_name: str
+    status: Literal["queued", "uploading", "completed", "failed", "interrupted"]
+    progress: float
+    stage: str
+    video_id: str | None
+    post_id: str | None
+    video_url: str | None = None
+    error_message: str | None
+    created_at: str
+    completed_at: str | None
+
+
+class InstagramAccountOut(BaseModel):
+    instagram_user_id: str
+    instagram_username: str
+    page_id: str
+    page_name: str
+
+
+class InstagramStatusOut(BaseModel):
+    configured: bool
+    connected: bool
+    r2_storage_configured: bool = False
+    authorization_pending: bool = False
+    authorization_error: str | None = None
+    accounts: list[InstagramAccountOut] = Field(default_factory=list)
+    message: str
+
+
+class InstagramUploadStart(BaseModel):
+    approved: bool = False
+    generation_id: str
+    instagram_user_id: str = Field(min_length=1, max_length=80)
+
+
+class InstagramUploadOut(BaseModel):
+    id: str
+    render_job_id: str
+    generation_id: str
+    page_id: str
+    page_name: str
+    instagram_user_id: str
+    instagram_username: str
+    status: Literal["queued", "uploading", "completed", "failed", "interrupted"]
+    progress: float
+    stage: str
+    media_id: str | None
+    permalink: str | None = None
+    container_id: str | None = None
     error_message: str | None
     created_at: str
     completed_at: str | None

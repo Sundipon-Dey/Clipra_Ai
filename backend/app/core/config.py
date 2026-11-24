@@ -36,6 +36,14 @@ class Settings:
     transcription_timeout_seconds: int
     transcription_model: str
     youtube_client_secrets_file: Path
+    facebook_app_secrets_file: Path
+    facebook_graph_api_version: str
+    facebook_tls_cert_file: Path
+    facebook_tls_key_file: Path
+    r2_account_id: str
+    r2_bucket: str
+    r2_access_key_id: str
+    r2_secret_access_key: str
 
     @property
     def projects_dir(self) -> Path:
@@ -91,4 +99,12 @@ settings = Settings(
     transcription_timeout_seconds=max(60, int(os.getenv("CLIPRA_TRANSCRIPTION_TIMEOUT_SECONDS", "3600"))),
     transcription_model=os.getenv("CLIPRA_TRANSCRIPTION_MODEL", "small.en").strip() or "small.en",
     youtube_client_secrets_file=Path(os.getenv("YOUTUBE_CLIENT_SECRETS_FILE") or str(REPOSITORY_ROOT / "backend" / "secrets" / "youtube-oauth-client.json")).expanduser().resolve(),
+    facebook_app_secrets_file=Path(os.getenv("FACEBOOK_APP_SECRETS_FILE") or str(REPOSITORY_ROOT / "backend" / "secrets" / "facebook-app.json")).expanduser().resolve(),
+    facebook_graph_api_version=os.getenv("FACEBOOK_GRAPH_API_VERSION", "v27.0").strip() or "v27.0",
+    facebook_tls_cert_file=Path(os.getenv("FACEBOOK_TLS_CERT_FILE") or str(REPOSITORY_ROOT / "backend" / "secrets" / "facebook-localhost.pem")).expanduser().resolve(),
+    facebook_tls_key_file=Path(os.getenv("FACEBOOK_TLS_KEY_FILE") or str(REPOSITORY_ROOT / "backend" / "secrets" / "facebook-localhost-key.pem")).expanduser().resolve(),
+    r2_account_id=os.getenv("R2_ACCOUNT_ID", "").strip(),
+    r2_bucket=os.getenv("R2_BUCKET", "clipra-ai").strip(),
+    r2_access_key_id=os.getenv("R2_ACCESS_KEY_ID", "").strip(),
+    r2_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY", "").strip(),
 )

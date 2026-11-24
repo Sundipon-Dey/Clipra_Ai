@@ -7,12 +7,12 @@ import sqlite3
 from fastapi import APIRouter, HTTPException, Response, status
 
 from app.core.config import settings
-from app.models.schemas import SocialContentGenerationOut, SocialContentStart, SocialPackageUpdate
+from app.models.schemas import ManualSocialContentImport, SocialContentGenerationOut, SocialContentStart, SocialPackageUpdate
 from app.services import social_content_store as store
 from app.services.project_store import utc_now
 from app.services.render_store import get as get_render
 from app.services.social_content_queue import enqueue
-from app.services.social_content_service import PLATFORMS, PROMPT_VERSION, build_context, public_generation, validate_edit
+from app.services.social_content_service import PLATFORMS, PROMPT_VERSION, SocialContentFailure, build_context, build_prompt, parse_model_packages, public_generation, validate_edit
 from app.services.storage import StoragePathError, managed_path
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ def _out(record: dict) -> SocialContentGenerationOut:
     return SocialContentGenerationOut(**public_generation(record))
 
 
-def _require_export(render_job_id: str) -> dict:
+def _require_export(render_job_id: str, *, check_gemini_limit: bool = True) -> dict:
     job = get_render(render_job_id)
     if not job or job["kind"] != "export":
         raise HTTPException(404, "Export version not found.")
@@ -38,10 +38,40 @@ def _require_export(render_job_id: str) -> dict:
         raise HTTPException(410, "The completed MP4 is missing from managed storage.")
     if path.stat().st_size <= 0:
         raise HTTPException(410, "The completed MP4 is empty.")
-    if path.stat().st_size > settings.gemini_file_max_bytes:
+    if check_gemini_limit and path.stat().st_size > settings.gemini_file_max_bytes:
         max_gib = settings.gemini_file_max_bytes / 1024**3
         raise HTTPException(413, f"This export exceeds the configured Gemini upload ceiling of {max_gib:.2f} GiB. The video was not changed or uploaded.")
     return job
+
+
+@router.get("/api/social-content-generations/{generation_id}/manual-prompt")
+def manual_prompt(generation_id: str) -> dict[str, str]:
+    record = store.get(generation_id)
+    if not record:
+        raise HTTPException(404, "Social content generation not found.")
+    if record["status"] != "failed":
+        raise HTTPException(409, "Manual fallback is available for failed generations only.")
+    _require_export(record["render_job_id"], check_gemini_limit=False)
+    return {"prompt": build_prompt(record["context"])}
+
+
+@router.post("/api/social-content-generations/{generation_id}/manual-import", response_model=SocialContentGenerationOut)
+def import_manual_output(generation_id: str, payload: ManualSocialContentImport) -> SocialContentGenerationOut:
+    record = store.get(generation_id)
+    if not record:
+        raise HTTPException(404, "Social content generation not found.")
+    if record["status"] != "failed":
+        raise HTTPException(409, "Manual output can be imported for failed generations only.")
+    _require_export(record["render_job_id"], check_gemini_limit=False)
+    try:
+        packages = parse_model_packages(payload.output)
+    except SocialContentFailure as exc:
+        message = exc.public_message.replace("Gemini", "AI").replace("No automatic retry was made.", "The imported output was not changed.")
+        raise HTTPException(422, message) from exc
+    updated = store.import_manual_packages(generation_id, packages)
+    if not updated:
+        raise HTTPException(409, "This generation changed while the manual output was being imported. Reload and try again.")
+    return _out(updated)
 
 
 @router.post("/api/render-jobs/{render_job_id}/social-content-generations", response_model=SocialContentGenerationOut, status_code=status.HTTP_202_ACCEPTED)

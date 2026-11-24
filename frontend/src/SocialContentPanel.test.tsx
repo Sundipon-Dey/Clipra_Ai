@@ -3,11 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SocialContentPanel from './SocialContentPanel'
 import type { SocialContentGeneration } from './api'
 
-const { getSocialContentHistory, startSocialContentGeneration, saveSocialPackage } = vi.hoisted(() => ({
-  getSocialContentHistory: vi.fn(), startSocialContentGeneration: vi.fn(), saveSocialPackage: vi.fn(),
+const { getSocialContentHistory, startSocialContentGeneration, saveSocialPackage, getSocialContentManualPrompt, importManualSocialContent } = vi.hoisted(() => ({
+  getSocialContentHistory: vi.fn(), startSocialContentGeneration: vi.fn(), saveSocialPackage: vi.fn(), getSocialContentManualPrompt: vi.fn(), importManualSocialContent: vi.fn(),
 }))
 vi.mock('./api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./api')>()), getSocialContentHistory, startSocialContentGeneration, saveSocialPackage,
+  ...(await importOriginal<typeof import('./api')>()), getSocialContentHistory, startSocialContentGeneration, saveSocialPackage, getSocialContentManualPrompt, importManualSocialContent,
 }))
 
 const short = { caption: 'Generated caption', opening_hook: 'Hook', hashtags: ['#clip'], suggested_keywords: ['gameplay'], alternate_caption: 'Alternate' }
@@ -42,5 +42,25 @@ describe('SocialContentPanel', () => {
     expect(await screen.findByText(/changes saved/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab', { name: 'YouTube Shorts' }))
     expect(await screen.findByLabelText('SEO title')).toHaveValue('Title')
+  })
+
+  it('copies an export-specific prompt and imports validated manual packages after failure', async () => {
+    const failed: SocialContentGeneration = { ...completed, status: 'failed', progress: 1, stage: 'failed', error_code: 'gemini_unavailable', error_message: 'Gemini is unavailable.', packages: null, generated_packages: null, cleanup_pending: true }
+    getSocialContentHistory.mockResolvedValue([failed])
+    getSocialContentManualPrompt.mockResolvedValue({ prompt: 'Prompt for this export with exact JSON keys.' })
+    const imported: SocialContentGeneration = { ...failed, status: 'completed', model_name: 'manual-fallback', prompt_version: 'stage6-social-manual-v1', error_code: null, error_message: null, packages, generated_packages: packages }
+    importManualSocialContent.mockResolvedValue(imported)
+    render(<SocialContentPanel renderJobId="export-1" version={3}/> )
+
+    fireEvent.click(await screen.findByRole('button', { name: /copy prompt/i }))
+    expect(await screen.findByLabelText('Manual AI prompt')).toHaveValue('Prompt for this export with exact JSON keys.')
+    expect(getSocialContentManualPrompt).toHaveBeenCalledWith('generation-1')
+    expect(screen.getByText(/copying does not upload anything to google/i)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Paste AI output'), { target: { value: '{"tiktok": ...}' } })
+    fireEvent.click(screen.getByRole('button', { name: /import all four packages/i }))
+    await waitFor(() => expect(importManualSocialContent).toHaveBeenCalledWith('generation-1', '{"tiktok": ...}'))
+    expect(await screen.findByLabelText('Caption')).toHaveValue('Generated caption')
+    expect(await screen.findByText(/output imported/i)).toBeInTheDocument()
   })
 })

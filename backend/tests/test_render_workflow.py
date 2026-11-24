@@ -71,7 +71,8 @@ def test_schema_v7_migrates_to_split_layout_additions(client):
         assert "layout_type" in columns and "split_layout_json" in columns
         assert db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='clip_layout_assets'").fetchone()
         assert db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='social_content_generations'").fetchone()
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 12
+        assert db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='instagram_uploads'").fetchone()
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 18
 
 
 def test_original_layout_snapshot_keeps_legacy_shape(client, tmp_path):

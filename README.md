@@ -1,6 +1,6 @@
 # CLIPRA.AI
 
-CLIPRA.AI is a local-first Windows application for organizing and editing authorized video. It supports local projects, imported media, FFprobe metadata, SQLite persistence, range-based playback, editable clips, captions, split-screen layouts, and versioned exports. You can paste timestamped suggestions from an external video-analysis service such as Clipwing and import those segments as individual editable clips.
+CLIPRA.AI is a local-first Windows application for organizing and editing authorized video. It supports local projects, imported media, FFprobe metadata, SQLite persistence, range-based playback, editable clips, captions, split-screen layouts, and versioned exports. Social packages can be reviewed and explicitly published as YouTube Shorts, Facebook Reels, and Instagram Reels. Instagram temporarily stages approved Reels in Cloudflare R2 for Meta to fetch; Facebook and YouTube use their existing upload paths. You can paste timestamped suggestions from an external video-analysis service such as Clipwing and import those segments as individual editable clips.
 
 Clipwing suggestions remain user-provided input; each selected segment is downloaded as a separate managed MP4 and opened as an editable draft. Stage 4 adds optional, local faster-whisper transcription and editable caption tracks. Stage 5 renders each approved clip once as a versioned MP4.
 
@@ -53,6 +53,10 @@ GEMINI_FILE_MAX_BYTES=2147483648
 GEMINI_FILE_POLL_TIMEOUT_SECONDS=600
 GEMINI_MAX_OUTPUT_TOKENS=8192
 GEMINI_INTERACTION_TIMEOUT_SECONDS=1800
+R2_ACCOUNT_ID=
+R2_BUCKET=clipra-ai
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
 CLIPRA_FRAMING_EXTRACT_TIMEOUT_SECONDS=60
 CLIPRA_FRAMING_MAX_FRAME_BYTES=3145728
 CLIPRA_TRANSCRIPTION_MAX_SECONDS=900
@@ -65,6 +69,14 @@ Leave `CLIPRA_WORKSPACE_DIR` empty to use the repository workspace, or set it to
 Gemini key and model settings are read only by backend code and are used for optional Smart Crop suggestions. Do not put secrets in frontend configuration. No video highlight-analysis feature uploads a video to Gemini.
 
 Each Smart Crop request requires explicit confirmation and sends three selected still frames from the managed clip to Google. It may consume API quota or incur charges. Source videos remain unchanged.
+
+Instagram publishing also requires Cloudflare R2 credentials in `backend/.env`. CLIPRA uploads the approved MP4 to the configured bucket under `ig-reels/`, creates a two-hour signed GET URL, and verifies that it returns the exact MP4 directly before giving it to Instagram. Configure a one-day R2 lifecycle deletion rule for the exact `ig-reels/` prefix. The signed URL is never logged or returned to the UI. Use the standalone connection check after adding the credentials:
+
+```powershell
+& .\backend\.venv\Scripts\python.exe .\backend\scripts\check_instagram_r2.py
+```
+
+The check uploads a tiny disposable object, prints the GET URL location with its signed query redacted, validates the same object through a separately signed HEAD URL (SigV4 signs the HTTP method), and deletes the object. It does not contact Instagram.
 
 The backend-only diagnostic makes one minimal text-generation request to the configured model. It does not upload video or modify billing settings. Run it from the repository root only when you want to test the connection:
 
@@ -132,7 +144,7 @@ projects/<project-id>/layout-images/             # validated split-layout still 
 temp/rendering/                    # transient Chromium caption frames and partial MP4 files
 ```
 
-SQLite schema version 12 contains:
+SQLite schema version 18 contains:
 
 - `projects`: ID, name, creation timestamp, and last-updated timestamp.
 - `media`: project relationship, original filename, managed relative source path, actual byte size, duration, width, height, rational and decimal frame rate, video codec, audio codec and availability, FFprobe container format, preview status/path/error, and import timestamp.
@@ -147,6 +159,7 @@ SQLite schema version 12 contains:
 - `clips.layout_type` and `clips.split_layout_json`: Original Layout default and isolated split-screen settings for both sections, including top source/image/color, framing, zoom, position, and divider ratio.
 - `clip_layout_assets`: validated PNG/JPG/WebP metadata and managed paths for uploaded top-section images. Image files are not automatically deleted when a layout changes or a render snapshot references them.
 - `social_content_generations`: generation attempts associated with one immutable export version, per-run consent, model and prompt versions, progress/recovery state, validated generated packages, separate editable package values, and pending Google cleanup references. This data remains local in SQLite; no post is published.
+- `instagram_uploads`: explicitly approved Instagram Reels publications, the selected Page and linked Instagram account, per-export progress, final media ID/permalink, Meta container ID, temporary R2 object key, and interruption state. Credentials remain encrypted separately in the local Windows user workspace.
 
 The database uses foreign-key checks and write-ahead logging. Media paths stored in SQLite are relative and are resolved and checked against the configured workspace before access. Databases, projects, uploaded media, previews, temporary files, exports, and logs are excluded from Git.
 
@@ -192,6 +205,8 @@ Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs` w
 | POST | `/api/render-jobs/{render_job_id}/social-content-generations` | Start Stage 6 after explicit per-run consent to upload that completed export and context to Google Gemini. |
 | GET | `/api/render-jobs/{render_job_id}/social-content-generations` | Read generation attempts and packages for an exact export version. |
 | GET | `/api/social-content-generations/{generation_id}` | Inspect social generation progress and saved package state. |
+| GET | `/api/social-content-generations/{generation_id}/manual-prompt` | Copy the exact export-specific social prompt after a Gemini failure. |
+| POST | `/api/social-content-generations/{generation_id}/manual-import` | Validate pasted AI JSON and populate all four social packages after a Gemini failure. |
 | PATCH | `/api/social-content-generations/{generation_id}/platforms/{platform}` | Save user edits to one platform package. |
 | GET | `/api/social/youtube/status` | Check whether a local Desktop OAuth client is configured and YouTube is connected. |
 | POST | `/api/social/youtube/connect` | Open Google's Desktop OAuth consent in the system browser using PKCE and a random loopback port. |
@@ -199,6 +214,17 @@ Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs` w
 | POST | `/api/social/youtube/exports/{render_job_id}/uploads` | Explicitly upload the selected completed export using its saved YouTube Shorts package and chosen privacy. |
 | GET | `/api/social/youtube/exports/{render_job_id}/uploads` | List uploads and progress for the exact export version. |
 | GET | `/api/social/youtube/uploads/{upload_id}` | Inspect one upload's state and final YouTube URL. |
+| GET | `/api/social/facebook/status` | Check local Facebook app configuration, connection state, and Pages returned by Meta. |
+| POST | `/api/social/facebook/connect` | Open Facebook OAuth in the browser and retrieve managed Pages after consent. |
+| DELETE | `/api/social/facebook/connection` | Clear Facebook Page tokens encrypted for the current Windows user. |
+| POST | `/api/social/facebook/exports/{render_job_id}/uploads` | Explicitly publish the selected completed export as a Facebook Reel with its saved package to a chosen Page. |
+| GET | `/api/social/facebook/exports/{render_job_id}/uploads` | List Facebook upload states and progress for the exact export version. |
+| GET | `/api/social/facebook/uploads/{upload_id}` | Inspect one Facebook upload and its resulting Reel URL. |
+| GET | `/api/social/instagram/status` | Check Meta configuration and professional Instagram accounts linked to authorized Pages. |
+| POST | `/api/social/instagram/connect` | Reopen the shared Meta OAuth flow to grant Instagram permissions and discover linked Instagram accounts. |
+| POST | `/api/social/instagram/exports/{render_job_id}/uploads` | Publish a completed export as an Instagram Reel with its saved package after explicit `{ "approved": true }` approval, using Instagram Graph API v25.0 `video_url` and temporary Cloudflare R2 storage. |
+| GET | `/api/social/instagram/exports/{render_job_id}/uploads` | List Instagram Reel publication states and progress for the exact export. |
+| GET | `/api/social/instagram/uploads/{upload_id}` | Inspect one Instagram publication and its resulting permalink. |
 
 Stage 5 exports one clip at a time at 9:16. The Export page always offers 1080 x 1920 and offers 1440 x 2560 only when FFprobe reports the original upload is at least 1440p (both source dimensions are at least 1440 pixels). Lower-resolution uploads are limited to 1080p. A 1440p landscape source can still be upscaled after a vertical crop, so larger output dimensions do not restore cropped detail. Clicking **Export** is the explicit approval and starts the only render pass. The renderer uses the current saved framing and caption settings, including Chromium-rendered caption frames from the editor's `CaptionOverlay` CSS, with FFmpeg for video composition. Final exports use H.264 CRF 18 with the medium preset and AAC at 160 kb/s. The chosen output profile is stored in each immutable render snapshot, so versions can use different resolutions without changing the editable draft or prior exports. Each export is an immutable V1, V2, and later version; editing resumes on the same draft and never overwrites an earlier output. Source media and completed exports are not automatically deleted. Existing Stage 5 preview files are retained locally but are not generated or shown by the current workflow. Imported-media playback compatibility previews remain separate.
 
@@ -241,6 +267,8 @@ Backend tests generate short synthetic videos and images with FFmpeg locally. Th
 - Stage 5: direct approved export, immutable versioned MP4s, playback/download, and editing after export (implemented; export uses H.264 CRF 18).
 - Stage 6: consented per-export Gemini social copy for TikTok, Instagram Reels, YouTube Shorts, and Facebook Reels, with persistent progress, editable packages, and explicit regeneration (implemented; automated tests mock Google and do not make billable requests).
 - Stage 7: user-connected YouTube account, reviewed YouTube Shorts package, explicit per-upload approval, privacy selection, resumable transfer, and per-export upload history (implemented; live Google authorization/upload requires your own credentials and has not been run here).
+- Stage 8: user-connected Facebook Pages, reviewed Facebook Reels package, explicit per-upload approval, managed Page selection, resumable local transfer progress, and per-export upload history (implemented; live Meta authorization/upload requires your own app and Page and has not been run here).
+- Stage 9: user-connected Instagram Business/Creator account linked to a Facebook Page, reviewed Instagram Reels package, explicit per-upload approval, temporary Cloudflare R2 hosting with Graph API `video_url`, Meta processing checks, and per-export upload history (implemented; automated checks mock Meta and R2; live authorization/upload has not been run here).
 - Split-Screen Streamer + Gameplay add-on after Stage 5: optional vertical same-video or custom-image composition integrated with direct Stage 5 exports (implemented; no face detection or batch workflow).
 
 See [Clipwing import details](docs/clipwing-import.md) for accepted input format, format selection, per-clip progress, storage behavior, and restart handling.
@@ -248,4 +276,6 @@ See [Custom Text and Original Layout crop](docs/custom-text-and-original-crop.md
 Split-screen top and bottom sections also have separate vertical trim controls; see [split-screen layout details](docs/split-screen-layout.md).
 See [Stage 6 social content](docs/stage6-social-content.md) for the per-export consent, upload, package editing, quota, and recovery behavior.
 See [YouTube publishing](docs/stage7-youtube-publishing.md) for credential placement, local token protection, upload behavior, Google Cloud test-mode limits, and API routes.
+See [Facebook Page publishing](docs/stage8-facebook-publishing.md) for Meta app setup, the OAuth callback URL, local credentials, Page permissions, and upload behavior.
+See [Instagram Reels publishing](docs/stage9-instagram-publishing.md) for linked-account requirements, permissions, per-export approval, upload behavior, and Meta's media constraints.
 
